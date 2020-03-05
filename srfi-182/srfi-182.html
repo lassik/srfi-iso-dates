@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>SRFI 182: ADBMAL, ALET, and ALET*</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/srfi.css" type="text/css" />
+    <link href="/favicon.png" rel="icon" sizes="192x192" type="image/png" />
+    <style>
+     .references a {
+       display: block;
+       margin: 0.5em 0;
+     }
+     .references td:first-child {
+       vertical-align: top;
+       width: 5em;
+     }
+    </style>
+  </head>
+<body>
+
+<h1>Title</h1>
+
+ADBMAL, ALET, and ALET*
+
+<h1>Author</h1>
+
+Joo ChurlSoo
+
+<h1>Status</h1>
+
+<p>This SRFI is currently in <em>draft</em> status.  Here is <a href="https://srfi.schemers.org/srfi-process.html">an explanation</a> of each status that a SRFI can hold.  To provide input on this SRFI, please send email to <code><a href="mailto:srfi+minus+182+at+srfi+dotschemers+dot+org">srfi-182@<span class="antispam">nospam</span>srfi.schemers.org</a></code>.  To subscribe to the list, follow <a href="https://srfi.schemers.org/srfi-list-subscribe.html">these instructions</a>.  You can access previous messages via the mailing list <a href="https://srfi-email.schemers.org/srfi-182">archive</a>.</p>
+<ul>
+  <li>Received: 2020/2/21</li>
+  <li>60-day deadline: 2020/4/22</li>
+  <li>Draft #1 published: 2020/2/22</li>
+</ul>
+
+<h1>Abstract</h1>
+
+<p>Unlike the VALUES and CALL-WITH-VALUES mechanism of R5RS, this SRFI
+uses an explicit representation for multiple return values as a single
+value, namely a procedure.  Decomposition of multiple values is done
+by simple application.  The macro, ADBMAL, evaluates to a procedure
+that takes one procedure argument.  The ADBMAL macro can be compared
+with LAMBDA.  While a LAMBDA expression that consists of
+&lt;formals&gt; and &lt;body&gt; requires some actual arguments later
+when the evaluated LAMBDA expression is called, an ADBMAL expression
+that consists of &lt;expression&gt;s corresponding to actual arguments
+of LAMBDA requires &lt;formals&gt; and &lt;body&gt;, that is, an
+evaluated LAMBDA expression, later when the evaluated ADBMAL
+expression is called.</p>
+
+<p>This SRFI also introduces the new LET-syntax ALET and ALET*, which
+depend on ADBMAL to manipulate multiple values, and which are
+compatible with LET and LET* of R5RS in single-value bindings.  They
+also have a binding form making use of VALUES and CALL-WITH-VALUES to
+handle multiple values, and new binding forms for list, cons, and
+other multiple values.  In addition, they have several new binding
+forms for useful functions such as escape, iteration, optional
+arguments, etc.</p>
+
+<h1>Changes from SRFI 86</h1>
+
+<p>This SRFI is based on <a href="https://srfi.schemers.org/srfi-86/">SRFI 86</a>.
+  The ALET and ALET* macros of this revised one are extended and
+  changed in following aspects compared with those of the old one:</p>
+<ol>
+  <li>The MU and NU macros are renamed to ADBMAL and ADBMALS.</li>
+  <li>ADBMAL*, their procedural equivalent, is added.</li>
+  <li>In addition to VALUES &amp; ADBMAL, multiple bindings for LIST &amp; CONS are added.</li>
+  <li>The binding syntax of ADBMAL is changed to that of VALUES.</li>
+  <li>The thunk form of `iterative function' is changed from `(() . lp)' to `lp'.</li>
+  <li>The ALET* does NOT use LAMBDA*; that permits duplications of variables.</li>
+  <li>The `rec' bindings of ALET* do not permit duplications of variables.</li>
+  <li>An awkward form, <code>(() expression1 expression2 ...)</code>, is removed.</li>
+  <li>The `opt', `key', and `cat' forms are integrated into `opt'.</li></ol>
+
+<h1>Rationale</h1>
+
+<p>It is impossible to bind the evaluated result of VALUES expression
+to a single variable unlike other Scheme expressions.  Moreover, the
+pair of VALUES and CALL-WITH-VALUES was clumsy to use and somewhat
+slow under some circumstances.  A solution would be to enclose the
+arguments of a VALUES expression in a procedure of one argument, a
+consumer procedure of CALL-WITH-VALUES.  The following are examples to
+show the differences.</p>
+
+<pre>
+(define ls (list 20 30))		    =&gt; (list 20 30)
+(define v (values 10 20 30))		    =&gt; error or 10 or 10 20 30
+(define v (lambda () (values 10 20 30)))    =&gt; (lambda () (values 10 20 30))
+(define m (adbmal 10 20 30)) 	   	    =&gt; (lambda (f) (f 10 20 30))
+(define m (adbmal* 10 20 30))		    =&gt; (lambda (f) (f 10 20 30))
+(define a (apply values 10 ls))		    =&gt; error or 10 or 10 20 30
+(define a (lambda () (apply values 10 ls))) =&gt; (lambda () (apply values 10 ls))
+(define n (adbmals 10 ls))	      	    =&gt; (lambda (f) (apply f 10 ls))
+(define n (apply adbmal* 10 ls))	    =&gt; (lambda (f) (apply f 10 ls))
+
+(call-with-values v list)	=&gt; (10 20 30)
+(m list)			=&gt; (10 20 30)
+(call-with-values a list)	=&gt; (10 20 30)
+(n list)			=&gt; (10 20 30)
+</pre>
+
+The ALET and ALET* macros are examples of the use of ADBMAL.  The
+differences between this LET-syntax and others, and some additional
+functions, are best explained by simple examples. In fact, the main
+purpose for this SRFI is to rearrange or rebuild the ALET and ALET*
+macros of SRFI 86.
+
+<ol>
+  <li><p>The expressions for ALET bindings are evaluated in sequence
+    from left to right, unlike LET of R5RS, R6RS, and <a
+    href="https://srfi.schemers.org/srfi-71/">SRFI 71</a>.</p>
+
+    <p>In SRFI 71:</p>
+    <pre>
+(let ((a (begin (display &quot;1st&quot;) 1))
+      (b c (values (begin (display &quot;2nd&quot;) 2) 3))
+      (d (begin (display &quot;3rd&quot;) 4))
+      ((values e . f) (values (begin (display &quot;4th&quot;) 5) 6)))
+  (list a b c d e f))
+=&gt; 2nd4th1st3rd(1 2 3 4 5 (6))
+    </pre>
+
+    <p>In this SRFI:</p>
+    <pre>
+(alet ((a (begin (display &quot;1st&quot;) 1))
+       (values b c (values (begin (display &quot;2nd&quot;) 2) 3))
+       (d (begin (display &quot;3rd&quot;) 4))
+       ((values e . f) (values (begin (display &quot;4th&quot;) 5) 6)))
+  (list a b c d e f))
+=&gt; 1st2nd3rd4th(1 2 3 4 5 (6))
+    </pre>
+  </li>
+
+  <li><p>They have a binding form that uses CALL-WITH-VALUES and VALUES to handle
+    multiple values with a syntactic keyword `values' as in SRFI 71.</p>
+
+    <pre>
+(define mal (adbmal 1 2))
+(define val (lambda () (values 1 2)))
+
+(alet* ((adbmal a b mal)
+	(values c d (val))		;different from SRFI 71
+	((adbmal e . f) mal)
+	((values g . h) (val))
+	((adbmal . i) mal)
+	((values . j) (val)))
+  (list a b c d e f g h i j))
+=&gt; '(1 2 1 2 1 (2) 1 (2) (1 2) (1 2))
+    </pre>
+  </li>
+
+  <li><p>They have binding forms that use LIST and CONS to handle multiple values.
+   The bindings that require multiple values can take multiple expressions, if
+   syntactically possible, as well as a single expression that produces
+    multiple values.</p>
+    <pre>
+(define ls (list 3 4 5))
+
+(alet* ((cons a b ls)
+	((cons c d) ls)
+	(e f g ls)
+	((h i j) ls)
+	((k . l) ls)
+	((m n o) 3 4 5)
+	((p . q) 3 4 5)
+	((r) ls)
+	(s ls))
+  (list a b c d e f g h i j k l m n o p q r s))
+=&gt; '(3 (4 5) 3 (4 5) 3 4 5 3 4 5 3 (4 5) 3 4 5 3 (4 5) (3 4 5) (3 4 5))
+    </pre></li>
+
+  <li><p>The named-ALET and named-ALET* are allowed to take multiple-
+  valued bindings.  They have a new binding form that has an iterative
+  function like named-ALET.</p>
+
+    <p>In SRFI 71:</p>
+    <pre>
+(let tag ((a 1) (b 2) (c 3) (d 4) (e 5))
+	  (if (&lt; a 10) (tag 10 b c d e) (list a b c d e)))
+=&gt; '(10 2 3 4 5)
+    </pre>
+    <p>In this SRFI:</p>
+    <pre>
+(define cs (cons 1 2))
+(define ls (list 3 4 5))
+(define mal (adbmal 1 2))
+(define val (lambda () (values 1 2)))
+
+(alet tag ((cons a b cs) (c d e ls))
+  (if (&lt; a 10) (tag 10 b c d e) (list a b c d e)))
+=&gt; '(10 2 3 4 5)
+(alet (((cons a b cs) (c d e ls) . tag))
+  (if (&lt; a 10) (tag 10 b c d e) (list a b c d e)))
+=&gt; '(10 2 3 4 5)
+
+(alet* tag ((cons a b cs) (c d e ls) ((adbmal c . d) mal) (e a))
+  (if (&lt; a 10) (tag 10 b c d e c d 10) (list a b c d e)))
+=&gt; '(10 2 1 (2) 10)
+(alet* (((cons a b cs) (c d e ls) ((adbmal c . d) mal) (e a) . tag))
+  (if (&lt; a 10) (tag 10 b c d e c d 10) (list a b c d e)))
+=&gt; error lambda: duplicate argument name at: c
+
+(alet* ((values a b (val))
+	((cons a b cs) (c d e ls) . tag))
+  (if (&lt; a 10) (tag 10 b c d e) (list a b c d e)))
+=&gt; '(10 2 3 4 5)
+    </pre></li>
+
+  <li><p>They have a new binding form that has an escape function.</p>
+    <pre>
+(alet ((exit)
+       (a (begin (display &quot;1st&quot;) 1))
+       (adbmal b c (adbmal (begin (display &quot;2nd&quot;) 2)
+			   (begin (display &quot;3rd&quot;) 3))))
+  (display (list a b c))
+  (exit 10)
+  (display &quot;end&quot;))
+=&gt; 1st2nd3rd(1 2 3)10
+    </pre></li>
+
+  <li><p>The AND-LET and AND-LET* are integrated into the ALET and ALET* with a
+    syntactic keyword `and'.</p>
+    <pre>
+(alet ((and (a (begin (display &quot;1st&quot;) 1))
+	    (b (begin (display &quot;2nd&quot;) 2))
+	    (c (begin (display &quot;false&quot;) #f))
+	    (d (begin (display &quot;3nd&quot;) 3))))
+  (list a b c d))
+=&gt; 1st2ndfalse#f
+
+(alet ((and (a (begin (display &quot;1st&quot;) 1))
+	    (b (begin (display &quot;2nd&quot;) 2) (&lt; b 2)) ; different from SRFI 2
+	    (c (begin (display &quot;false&quot;) #f))
+	    (d (begin (display &quot;3nd&quot;) 3))))
+  (list a b c d))
+=&gt; 1st2nd#f
+    </pre></li>
+
+  <li><p>The LETREC and LETREC* forms are integrated into the ALET and ALET* with a
+    syntactic keyword `rec'.</p>
+    <pre>
+(alet* ((a 1)
+	(rec (a 2) (b (lambda () c)) (c a))
+	(d 50))
+  (list a (b) c d))
+=&gt; (2 2 2 50)
+    </pre></li>
+
+  <li><p>The REST-VALUES of SRFI 51, SRFI 54 and the LET-KEYWORDS are integrated
+    into the ALET and ALET* with a syntactic keyword `opt'.</p>
+    <pre>
+((lambda n
+   (alet* ((opt n ('x 11) (('y 'yy) 22) (,z &quot;s&quot; (string? z)) (a 10) (b 20) . c))
+     (list x y z a b c))) 1 2 3 &quot;str&quot; 'yy 20 30 'x 10)
+=&gt; (11 20 &quot;str&quot; 3 1 (2 30 x 10))
+
+((lambda n
+   (alet* ((opt n (`x 11) ((`y 'yy) 22) (,z &quot;s&quot; (string? z)) (a 10) (b 20) . c))
+     (list x y z a b c))) 1 2 3 &quot;str&quot; 'yy 20 30 'x 10)
+=&gt; (10 20 &quot;str&quot; 1 2 (3 30))
+
+((lambda n
+   (alet* ((opt n ('x 11) (('y 'yy) 22) (,z &quot;s&quot; (string? z)) (a 10) (b 20) . c))
+     (list x y z a b c))) 'yy 20 'x 10 1 2 3 &quot;str&quot; 30)
+=&gt; (10 20 &quot;str&quot; 1 2 (3 30))
+    </pre></li></ol>
+
+<h1>Specification</h1>
+<pre>
+syntax:	   (adbmal expr ...)	    =&gt; (lambda (f) (f expr ...))
+	   (adbmals expr ...)	    =&gt; (lambda (f) (apply f expr ...))
+procedure: (adbmal* . exprs)	    =&gt; (lambda (f) (apply f exprs))
+</pre>
+
+<p>The ADBMAL evaluates to a procedure of one argument.  The environment in
+effect when the macro expression was evaluated is remembered as part of the
+procedure.  When the procedure is later called with an actual argument, a
+procedure, the environment in which the macro was evaluated is extended by
+binding &lt;expr&gt;s to the corresponding variables in the formal argument list of
+the argument procedure.  The argument procedure of ADBMAL is called with the
+&lt;expr&gt;s.  The ADBMAL* is a procedural equivalent of ADBMAL and ADBMALS.</p>
+
+<pre>
+(alet  (&lt;binding spec&gt; ...) body)
+(alet* (&lt;binding spec&gt; ...) body)
+</pre>
+
+<p>The ALET* is to the ALET what the LET* is to the LET.  However, the &lt;binding
+spec&gt;s of ALET are evaluated in sequence from left to right unlike LET of R5RS.
+The ALET and ALET* make use of ADBMAL as well as VALUES to handle multiple
+values.  So, the single &lt;expr&gt; of multiple values binding should be a ADBMAL
+expression, or its equivalent.  And the number of arguments of ADBMAL must
+match the number of values expected by the binding specification.  Otherwise
+  an error is signaled, as LAMBDA expression would.</p>
+
+<pre>
+syntax-rules identifier: adbmal values cons rec and opt
+</pre>
+
+<p>The variables of each &lt;binding spec&gt; are bound as follows:</p>
+
+<ul style="list-style-type: none;">
+  <li><pre>1. (&lt;var&gt; &lt;expr&gt;)
+((lambda (&lt;var&gt;) body) &lt;expr&gt;)</pre></li>
+
+  <li><pre>2-1. (&lt;var1&gt; &lt;var2&gt; &lt;var3&gt; ... &lt;list expression&gt;)
+(apply (lambda (&lt;var1&gt; &lt;var2&gt; &lt;var3&gt; ...) body) &lt;list expression&gt;)</pre></li>
+
+  <li><pre>2-2. (adbmal &lt;var1&gt; &lt;var2&gt; ... &lt;adbmal expression&gt;)
+(&lt;adbmal expression&gt; (lambda (&lt;var1&gt; &lt;var2&gt; ...) body))</pre></li>
+
+  <li><pre>2-3. (values &lt;var1&gt; &lt;var2&gt; ... &lt;values expression&gt;)
+(call-with-values (lambda () &lt;values expression&gt;)
+  (lambda (&lt;var1&gt; &lt;var2&gt; ...) body)</pre></li>
+
+  <li><pre>2-4. (cons &lt;var1&gt; &lt;var2&gt; &lt;pair expression&gt;)
+((lambda (&lt;var1&gt; &lt;var2&gt;) body) &lt;pair expression&gt;)</pre></li>
+
+  <li><pre>3-1. ((&lt;var1&gt; &lt;var2&gt; &lt;var3&gt; ...) &lt;list expression&gt;) is the same as 2-1.</pre></li>
+  <li><pre>3-2. ((adbmal &lt;var1&gt; &lt;var2&gt; ...) &lt;adbmal expression&gt;) is the same as 2-2.</pre></li>
+  <li><pre>3-3. ((values &lt;var1&gt; &lt;var2&gt; ...) &lt;values expression&gt;) is the same as 2-3.</pre></li>
+  <li><pre>3-4. ((cons &lt;var1&gt; &lt;var2&gt;) &lt;pair expression&gt;) is the same as 2-4.</pre></li>
+
+  <li><pre>4-1. ((&lt;var1&gt; &lt;var2&gt; ... . &lt;varn&gt;) &lt;list expression&gt;)
+(apply (lambda (&lt;var1&gt; &lt;var2&gt; ... . &lt;varn&gt;) body) &lt;list expression&gt;)</pre></li>
+
+  <li><pre>4-2. ((adbmal &lt;var1&gt; ... . &lt;varn&gt;) &lt;adbmal expression&gt;)
+(&lt;adbmal expression&gt; (lambda (&lt;var1&gt; ... . &lt;varn) body))</pre></li>
+
+  <li><pre>4-3. ((values &lt;var1&gt; ... . &lt;varn&gt;) &lt;values expression&gt;)
+(call-with-values (lambda () &lt;values expression&gt;)
+  (lambda (&lt;var1&gt; ... . &lt;varn) body))</pre></li>
+
+  <li><pre>5-1. ((&lt;var1&gt; &lt;var2&gt; ...) &lt;expr1&gt; &lt;expr2&gt; ...)
+((lambda (&lt;var1&gt; &lt;var2&gt; ...) body) &lt;expr1&gt; &lt;expr2&gt; ...)</pre></li>
+
+  <li><pre>5-2. ((&lt;var1&gt; &lt;var2&gt; ... . &lt;varn&gt;) &lt;expr1&gt; &lt;expr2&gt; &lt;expr3&gt; ...)
+((lambda (&lt;var1&gt; &lt;var2&gt; ... . &lt;varn&gt;) body) &lt;expr1&gt; &lt;expr2&gt; &lt;expr3&gt; ...)</pre></li>
+
+  <li><pre>6. (&lt;binding spec&gt; ... . &lt;var&gt;)		;iterative function
+   &lt;var&gt;				;iterative thunk
+((letrec ((var (lambda (&lt;variables of binding spec&gt; ...) body)))
+   var) &lt;expressions of binding spec&gt; ...)</pre></li>
+
+  <li><pre>7. (&lt;var&gt;)				;escape function
+(call-with-current-continuation (lambda (&lt;var&gt;) body))</pre></li>
+
+  <li><pre>8. (rec (&lt;var1&gt; &lt;expr1&gt;) (&lt;var2&gt; &lt;expr2&gt;) ...)
+(letrec[*] ((&lt;var1&gt; &lt;expr1&gt;) (&lt;var2&gt; &lt;expr2&gt;) ...) body)</pre></li>
+
+  <li><pre>9. (and (&lt;var1&gt; &lt;expr1&gt; [&lt;test1&gt;]) (&lt;var2&gt; &lt;expr2&gt; [&lt;test2&gt;]) ...)
+</pre>
+<p>Each &lt;expr&gt; is evaluated sequentially and bound to the corresponding &lt;var&gt;.
+During the process, if there is no &lt;test&gt; and the value of &lt;expr&gt; is false, it
+stops and returns #f.  When there is a &lt;test&gt;, the process is continued
+regardless of the value of &lt;expr&gt; unless the value of &lt;test&gt; is false.  If the
+value of &lt;test&gt; is false, it stops and returns #f.</p></li>
+
+  <li><pre>10. (opt &lt;rest list&gt; &lt;clause1&gt; &lt;clause2&gt; ... . &lt;rest var&gt;)
+&lt;clause&gt; --&gt; &lt;var&gt;			;( &lt;var&gt; #f) &lt;optional sequent variable&gt;
+	  | ,&lt;var&gt;			;(,&lt;var&gt; #f) &lt;optional unnamed variable&gt;
+	  | '&lt;var&gt;			;('&lt;var&gt; #f) &lt;optional keyword variable&gt;
+	  | `&lt;var&gt;			;(`&lt;var&gt; #f) &lt;optional keyword variable&gt;
+	  | (&lt;var-spec&gt; &lt;default&gt;)
+	  | (&lt;var-spec&gt; &lt;default&gt; &lt;test&gt;)
+	  | (&lt;var-spec&gt; &lt;default&gt; &lt;test&gt; &lt;true substitute&gt;)
+	  | (&lt;var-spec&gt; &lt;default&gt; &lt;test&gt; &lt;true substitute&gt; &lt;false substitute&gt;)
+
+&lt;var-spec&gt; --&gt; &lt;var&gt;		  ;&lt;optional sequent variable&gt;
+	    | ,&lt;var&gt;		  ;&lt;optional unnamed variable&gt;
+	    | '&lt;var&gt;		  ;&lt;optional keyword variable&gt;: two in a time
+	    | `&lt;var&gt;		  ;&lt;optional keyword variable&gt;: one in a time
+	    | ('&lt;var&gt; &lt;keyword&gt; [&lt;equivalence predicate&gt;])
+	    | (`&lt;var&gt; &lt;keyword&gt; [&lt;equivalence predicate&gt;])
+	    | ( &lt;var&gt; &lt;keyword&gt;)  ;((&lt;var&gt; &lt;keyword&gt;) &lt;default&gt;)
+	      	      		  ;use not macro but function to find keywords
+
+&lt;equivalence predicate&gt; --&gt; eq?		;default equivalent predicate
+	     		  | eqv?
+			  | equal?
+  </pre>
+  <p>The &lt;optional sequent variable&gt; is bound to the first one of the remaining
+    elements of &lt;rest list&gt;.  If there are no more elements, it is bound to the
+    &lt;default&gt;.</p>
+  <p>The &lt;optional unnamed variable&gt; is temporarily bound to
+    each of remaining elements of &lt;rest list&gt; sequentially until
+    &lt;test&gt; returns a true value, at which point it is finally
+    bound to the passed element.  If there is no &lt;test&gt;, the
+    first one of the remaining elements of &lt;rest list&gt; is
+    regarded as passing.  If any element does not pass the
+    &lt;test&gt;, it is bound to the &lt;default&gt;.  If there is a
+    &lt;false substitute&gt; and &lt;test&gt; returns a false value,
+    it is finally bound to the &lt;false substitute&gt; instead of the
+    above process.  If there is a &lt;true substitute&gt; and
+    &lt;test&gt; returns a true value, it is finally bound to the
+    &lt;true substitute&gt;.</p>
+
+  <p>The keyword used for the corresponding &lt;optional keyword
+    variable&gt; is a symbol of the same name as the &lt;var&gt; or
+    &lt;keyword&gt;.  The remaining elements are interpreted one by
+    one (quote symbol) or two in a time (quasiquote symbol) until an
+    element is the keyword, at which point the variable is bound to
+    the next element.  If there is no keyword or the keyword is the
+    last element, the variable is bound to the &lt;default&gt;.</p>
+
+  <p>The following rules are applied to &lt;optional sequent
+    variable&gt; and &lt;optional keyword variable&gt;: If there is a
+    &lt;test&gt;, it is evaluated only when &lt;var&gt; is bound to an
+    element of &lt;rest list&gt;.  If it returns a false value and
+    there is no &lt;false substitute&gt;, an error is signaled.  If it
+    returns a false value and there is a &lt;false substitute&gt;,
+    &lt;var&gt; is rebound to the &lt;false substitute&gt; instead of
+    signaling an error.  If it returns a true value and there is a
+    &lt;true substitute&gt;, &lt;var&gt; is rebound to the &lt;true
+    substitute&gt;.  When there are more elements than ones that are
+    specified by &lt;var&gt;s, an error is signaled.  But if &lt;rest
+    var&gt; is given, it is bound to the remaining elements.</p></li></ul>
+
+  <pre>(alet  name (&lt;binding spec&gt; ...) body)
+(alet* name (&lt;binding spec&gt; ...) body)</pre>
+
+  <p>These are the same as the named LET except binding specification.  These allow
+    all sorts of bindings in &lt;binding spec&gt;.</p>
+
+<h1>Sample Implementation</h1>
+
+<p>Sample implementations are provided based on both
+<code>define-syntax</code> and <code>define-macro</code>.  They're
+available both in the <a href="https://github.com/scheme-requests-for-implementation/srfi-182">Github repo</a> and in <a href= "https://srfi.schemers.org/srfi-182/srfi-182.tgz">this <code>.tgz</code> file</a>.</p>
+
+<h1>References</h1>
+<table class="references">
+<tr><td>[R5RS]</td><td>Richard Kelsey, William Clinger, and Jonathan Rees: Revised(5) Report on the Algorithmic Language Scheme.<a href="http://www.schemers.org/Documents/Standards/R5RS/" class="eponymous">http://www.schemers.org/Documents/Standards/R5RS/</a></td></tr>
+<tr><td>[R6RS]</td><td>Michael Sperber, R. Kent Dybvig, Matthew Flatt, and Anton von Straaten: Revised(6) Report on the Algorithmic Language Scheme.<a class="eponymous" href="http://www.r6rs.org">http://www.r6rs.org</a></td></tr>
+<tr><td>[SRFI 2]</td><td>Oleg Kiselyov: AND-LET*: and AND with local bindings, a guarded LET* special form. <a class="eponymous" href="https://srfi.schemers.org/srfi-2/">https://srfi.schemers.org/srfi-2/</a></td></tr>
+<tr><td>[SRFI 11]</td><td>Lars T. Hansen: Syntax for receiving multiple values. <a class="eponymous" href="https://srfi.schemers.org/srfi-11/">https://srfi.schemers.org/srfi-11/</a></td></tr>
+<tr><td>[SRFI 51]</td><td>Joo ChurlSoo: Handling rest list. <a class="eponymous" href="https://srfi.schemers.org/srfi-51/">https://srfi.schemers.org/srfi-51/</a></td></tr>
+<tr><td>[SRFI 54]</td><td>Joo ChurlSoo: Formatting. <a class="eponymous" href="https://srfi.schemers.org/srfi-54/">https://srfi.schemers.org/srfi-54/</a></td></tr>
+<tr><td>[SRFI 71]</td><td>Sebastian Egner: Extended LET-syntax for multiple values. <a class="eponymous" href="https://srfi.schemers.org/srfi-71/">https://srfi.schemers.org/srfi-71/</a></td></tr>
+<tr><td>[SRFI 86]</td><td>Joo ChurlSoo: MU and NU simulating VALUES &amp; CALL-WITH-VALUES, and their related LET-syntax.<a class="eponymous" href="https://srfi.schemers.org/srfi-86/">https://srfi.schemers.org/srfi-86/</a></td></tr></table>
+
+<h1>Copyright</h1>
+
+Copyright &copy; Joo ChurlSoo (2012).
+
+<p>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+<p>
+The above copyright notice and this permission notice (including the
+next paragraph) shall be included in all copies or substantial
+portions of the Software.
+
+<p>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+<address>Editor: <a href="mailto:srfi-editors+at+srfi+dot+schemers+dot+org">Arthur A. Gleckler</a></address>
+</body></html>

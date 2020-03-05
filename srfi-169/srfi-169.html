@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SRFI 169: Underscores in numbers</title>
+  <meta name="viewport" content=
+  "width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/srfi.css" type="text/css">
+  <link href="/favicon.png" rel="icon" sizes="192x192" type=
+  "image/png">
+</head>
+<body>
+  <h1>SRFI 169</h1>
+  <h2>Title</h2>
+  <p><strong>Underscores in numbers</strong></p>
+  <h2>Author</h2>
+  <p>Lassi Kortela</p>
+  <h2>Status</h2>
+  <p>This SRFI is currently in <em>final</em> status. Here is
+  <a href="https://srfi.schemers.org/srfi-process.html">an
+  explanation</a> of each status that a SRFI can hold. To provide
+  input on this SRFI, please send email to <code><a href=
+  "mailto:srfi+minus+169+at+srfi+dotschemers+dot+org">srfi-169@<span class="antispam">nospam</span>srfi.schemers.org</a></code>.
+  To subscribe to the list, follow <a href=
+  "https://srfi.schemers.org/srfi-list-subscribe.html">these
+  instructions</a>. You can access previous messages via the
+  mailing list <a href=
+  "https://srfi-email.schemers.org/srfi-169">archive</a>.</p>
+  <ul>
+    <li>Received: 2019/4/16</li>
+    <li>Draft #1 published: 2019/4/18</li>
+    <li>Draft #2 published: 2019/7/16</li>
+    <li>Draft #3 published: 2019/7/20</li>
+    <li>Finalized: 2019/7/26</li>
+  </ul>
+  <h2>Abstract</h2>
+  <p>Many people find that large numbers are easier to read when
+  the digits are broken into small groups. For example, the number
+  <code>1582439</code> might be easier to read if written as
+  <code>1 582 439</code>. This applies to source code as it does to
+  other writing. We propose an extension of Scheme syntax to allow
+  the underscore as a digit separator in numerical constants.</p>
+  <h2>Table of contents</h2>
+  <ul>
+    <li>
+      <a href="#_rationale">Rationale</a>
+      <ul>
+        <li>
+          <a href="#_how_many_digits_per_group">How many digits per
+          group</a>
+        </li>
+        <li>
+          <a href="#_what_separator_character_to_use">What
+          separator character to use</a>
+        </li>
+        <li>
+          <a href=
+          "#_potential_ambiguity_between_numbers_and_identifiers">Potential
+          ambiguity between numbers and identifiers</a>
+        </li>
+        <li>
+          <a href="#_printing_numbers_with_underscores">Printing
+          numbers with underscores</a>
+        </li>
+      </ul>
+    </li>
+    <li>
+      <a href="#_specification">Specification</a>
+      <ul>
+        <li>
+          <a href="#_the_underscore_rule">The underscore rule</a>
+        </li>
+        <li>
+          <a href=
+          "#_the_rule_is_necessarily_ambiguous_and_incomplete">The
+          rule is necessarily ambiguous and incomplete</a>
+        </li>
+        <li>
+          <a href="#_the_rule_as_applied_to_r">The rule as applied
+          to R<sup>n</sup>RS</a>
+        </li>
+        <li>
+          <a href="#_implications_of_the_rule">Implications of the
+          rule</a>
+        </li>
+        <li>
+          <a href="#_being_lenient_about_the_rule">Being lenient
+          about the rule</a>
+        </li>
+      </ul>
+    </li>
+    <li>
+      <a href="#_examples">Examples</a>
+      <ul>
+        <li>
+          <a href="#_integers">Integers</a>
+        </li>
+        <li>
+          <a href="#_rational_numbers">Rational numbers</a>
+        </li>
+        <li>
+          <a href="#_real_numbers">Real numbers</a>
+        </li>
+        <li>
+          <a href="#_complex_numbers">Complex numbers</a>
+        </li>
+        <li>
+          <a href="#_hypercomplex_numbers">Hypercomplex numbers</a>
+        </li>
+        <li>
+          <a href="#_units_of_measure">Units of measure</a>
+        </li>
+        <li>
+          <a href=
+          "#_numbers_with_radix_or_exactness_prefixes">Numbers with
+          radix or exactness prefixes</a>
+        </li>
+      </ul>
+    </li>
+    <li>
+      <a href="#_implementation">Implementation</a>
+    </li>
+    <li>
+      <a href="#_acknowledgements">Acknowledgements</a>
+    </li>
+  </ul>
+  <h2 id="_rationale">Rationale</h2>
+  <h3 id="_how_many_digits_per_group">How many digits per
+  group</h3>
+  <p>Western cultures tend to divide digits into groups of three.
+  This convention is not universal. For example, in India people
+  write numbers like <code>3 14 15 926</code> (read <em>three crore
+  fourteen lakh fifteen thousand nine hundred and twenty-six</em>
+  in Indian English).</p>
+  <p>For simplicity and universality, we propose that digit groups
+  of all sizes may be mixed freely when writing a number. It is
+  permissible to have just one digit in a group, and groups in a
+  number don’t need to be ordered by increasing or decreasing digit
+  count.</p>
+  <h3 id="_what_separator_character_to_use">What separator
+  character to use</h3>
+  <p>Human cultures and programming languages differ in what
+  separator to use between groups.</p>
+  <ul>
+    <li>
+      <p>The examples in this document so far have used a space.
+      This is familiar to humans but not a good fit for most
+      programming languages since whitespace has a prominent role
+      as token separator. Scheme is no exception here.</p>
+    </li>
+    <li>
+      <p>The next natural alternative is to use a comma or a
+      period. This is likely to cause confusion in an international
+      community since countries that use a comma as the decimal
+      separator are as numerous as those that use a period. More
+      trouble comes from Scheme using the comma to splice things
+      into a quasiquoted list: e.g. <code>`(1,2)</code> evaluates
+      to <code>(1 2)</code>. Allowing commas in numbers would
+      change splicing behavior in a confusing way.</p>
+    </li>
+    <li>
+      <p>C++ uses an apostrophe which is somewhat exotic and may
+      call to mind units of measure, e.g. feet and inches. Scheme
+      also uses the apostrophe for quotation: e.g.
+      <code>'(1'2)</code> evaluates to <code>(1 (quote 2))</code>.
+      Allowing apostrophes in numbers would change the meaning of
+      this syntax.</p>
+    </li>
+    <li>
+      <p>The most popular digit group separator among programming
+      languages is the underscore. It is in the standard syntax of
+      Ada, C#, Clojure, Eiffel, Frink, Java, Julia, Kotlin, OCaml,
+      Perl, Python, Ruby, Rust and Swift. It is also being added to
+      JavaScript and is a common syntax extension in
+      implementations of Standard ML. The Common Lisp standard
+      permits it under the umbrella of <em>potential numbers</em>
+      but we are not aware of implementations that use the
+      opportunity. Of Scheme implementations, Gauche can read
+      numbers with underscores when they have a radix or exactness
+      prefix.</p>
+    </li>
+  </ul>
+  <p>In light of the above, we consider the underscore to be the
+  clear winner. It is the most widely compatible and least
+  ambiguous choice, in both human and machine terms.</p>
+  <h3 id="_potential_ambiguity_between_numbers_and_identifiers">
+  Potential ambiguity between numbers and identifiers</h3>
+  <p>Languages in the Lisp family traditionally allow a larger set
+  of characters in identifiers than do most other languages. For
+  example, the tokens <code>1+</code> and <code>3*/!</code> parse
+  as symbols in Common Lisp. Scheme is slightly more restrictive:
+  none of R<sup>4</sup>RS, R<sup>5</sup>RS, R<sup>6</sup>RS and
+  R<sup>7</sup>RS recognize identifiers that begin with a decimal
+  digit. Implementations can be more relaxed with identifiers. For
+  example, MIT Scheme comes with <code>1+</code> and
+  <code>-1+</code> procedures to increment and decrement numbers.
+  Several implementations presently parse tokens consisting
+  entirely of digits and underscores as identifiers. Some
+  implementations, such as Chicken, assume that anything they
+  cannot recognize as a number is an identifier.</p>
+  <p>Countless languages outside the Lisp family have a convention
+  of using underscores as word separators in multi-word
+  identifiers. Following that convention, Scheme’s
+  <code>open-input-file</code> would be spelled
+  <code>open_input_file</code> instead. In these languages it’s
+  common to use a leading underscore to mark private (as opposed to
+  public or exported) identifiers. This leads to potential
+  ambiguity with identifiers such as <code>_123</code> that start
+  with an underscore and contain only underscores and digits. Such
+  tokens often parse as identifiers. If we made them parse as
+  numbers in Scheme it could confuse programmers and spell trouble
+  for code generators that translate Scheme identifiers to other
+  languages.</p>
+  <p>Scheme supports a rich numeric tower of integers, ratios, real
+  and complex numbers. These come in exact and inexact varieties.
+  For real numbers, we have decimal-point and exponent notation.
+  The Kawa implementation of Scheme adds quaternions and units of
+  measure to the mix. Common Lisp’s <em>potential numbers</em>
+  offer a glimpse of how far numerical syntax can go. These
+  intricate extensions, some of which we cannot even anticipate
+  yet, make it even trickier for us to specify a digit separation
+  scheme devoid of ambiguity.</p>
+  <p>We attempt to solve these problems with a conservative rule
+  that allows underscores only <em>between</em> digits. After
+  considering everything in the above paragraphs, we did not manage
+  to come up with any concrete examples of present or future tasks
+  that would be impeded by this restricted version of the syntax
+  extension.</p>
+  <p>As an extra measure we also forbid trailing underscores, and
+  forbid more than one consecutive underscore. We could not think
+  of any particular situations these cause problems but decided to
+  avoid them anyway. There are enough similar gotchas that caution
+  seems the wise choice.</p>
+  <h3 id="_printing_numbers_with_underscores">Printing numbers with
+  underscores</h3>
+  <p>This SRFI does not specify anything about inserting
+  underscores into numbers at print time. Printing with underscores
+  would be as useful as reading is, especially when using a Scheme
+  <em>read-eval-print loop</em> as a calculator. However, there is
+  no consensus on how to best extend the Scheme printer. Major work
+  is underway but it will not stabilize in time for the publication
+  of this SRFI.</p>
+  <p>Apart from printer extension concerns the cultural conventions
+  of where to place digit separators are also varied and complex.
+  When reading numbers we can leave the decision to writers and
+  simply accept a wide range of possibilities. When printing we
+  would have to make those decisions, or else map out what printer
+  options are needed and design good defaults for them.</p>
+  <p>For these reasons, decisions about printing are deferred to
+  implementations and to future SRFIs.</p>
+  <h2 id="_specification">Specification</h2>
+  <h3 id="_the_underscore_rule">The underscore rule</h3>
+  <p>We stipulate that conforming implementations of this SRFI must
+  <em>allow one underscore between any two digits, in any part of a
+  number</em>.</p>
+  <p>For the purpose of this rule, the term <em>digit</em> covers
+  all digits in any radix between 2 and 36 inclusive - not only
+  decimal digits. That means that the letters <code>a-z</code> and
+  <code>A-Z</code> are considered digits (but only in places where
+  the implementation parses that character as a digit).</p>
+  <h3 id="_the_rule_is_necessarily_ambiguous_and_incomplete">The
+  rule is necessarily ambiguous and incomplete</h3>
+  <p>We lament that it is impossible to give a precise formal
+  definition of the underscore rule because a typical Scheme
+  implementation does not have a complete formal grammar for its
+  syntax. Even if it did, that grammar could change in new
+  versions.</p>
+  <p>The next section gives what we believe to be a correct and
+  complete extension to the formal grammar of standard Scheme. But
+  since few implementations support the whole standard syntax and
+  nothing but the standard syntax, implementors of this SRFI may
+  encounter situations where their subjective judgment is called
+  for. The subsequent section attempts to help by listing many
+  examples of how the rule is intended to apply in particular
+  situations. Unfortunately that list cannot be exhaustive
+  either.</p>
+  <p>In situations where the letter of this specification does not
+  say anything conclusive, we ask that implementors try to follow
+  its spirit. When in doubt as to whether or not underscores should
+  be supported in a particular part of number syntax, we suggest
+  that implementors <em>not</em> allow them. They can always be
+  allowed later once there is more clarity or consensus.</p>
+  <h3 id="_the_rule_as_applied_to_r">The rule as applied to
+  R<sup>n</sup>RS</h3>
+  <p>The standard syntax of Scheme is defined in:</p>
+  <ul>
+    <li>R<sup>6</sup>RS section <em>4.2. Lexical syntax</em></li>
+    <li>R<sup>7</sup>RS section <em>7.1. Formal syntax</em></li>
+  </ul>
+  <p>The underscore rule can be implemented as an extension to
+  either standard by adding the following grammar rules to the
+  lexical syntax:</p>
+  <pre>
+⟨digits R⟩       = ⟨digit R⟩+ ⟨more digits R⟩
+⟨more digits R⟩  = ⟨empty⟩ | ⟨one underscore⟩ ⟨digits R⟩
+⟨maybe digits R⟩ = ⟨empty⟩ | ⟨digits R⟩
+⟨one underscore⟩ = _</pre>
+  <p>and then making the following substitutions in existing rules
+  (for all <code>R</code>):</p>
+  <ul>
+    <li>replace all occurrences of <code>⟨digit R⟩+</code> with
+    <code>⟨digits R⟩</code></li>
+    <li>replace all occurrences of <code>⟨digit R⟩*</code> with
+    <code>⟨maybe digits R⟩</code></li>
+  </ul>
+  <p>Note that both standards also define the character classes
+  <code>⟨digit⟩</code> and <code>⟨hex digit⟩</code>. Neither of
+  those should be amended. The <code>⟨digit⟩</code> class is used
+  for identifiers and to help define other character classes. The
+  <code>⟨hex digit⟩</code> class is used to define the backslash
+  escape syntax for inserting characters into strings by their
+  hexadecimal value. This SRFI does not modify the syntax of string
+  escapes, and does not aim to modify the syntax of
+  identifiers.</p>
+  <h3 id="_implications_of_the_rule">Implications of the rule</h3>
+  <p>The rule <em>includes</em> at least the following things:</p>
+  <ul>
+    <li>
+      <p>Underscores between digits in numbers of any radix
+      (binary, octal, decimal, hexadecimal and any others supported
+      by the implementation).</p>
+    </li>
+    <li>
+      <p>Underscores between digits <code>0-9 a-z A-Z</code> when a
+      number is written in a radix higher than 10 (using the
+      standard hexadecimal read syntax, or any
+      implementation-defined read syntax).</p>
+    </li>
+    <li>
+      <p>Underscores in the numerator and/or denominator of a
+      ratio.</p>
+    </li>
+    <li>
+      <p>Underscores in the integer, fractional and/or exponent
+      part of a real number.</p>
+    </li>
+    <li>
+      <p>Underscores in the real and/or imaginary part of a complex
+      number.</p>
+    </li>
+    <li>
+      <p>Underscores in any dimension of a hypercomplex number (for
+      implementations with syntax for such numbers).</p>
+    </li>
+    <li>
+      <p>Underscores in both exact and inexact numbers.</p>
+    </li>
+    <li>
+      <p>Underscores in the quantity part of a number with a unit
+      of measure (for implementations with syntax for units of
+      measure).</p>
+    </li>
+    <li>
+      <p>Underscores between leading zeros (but not before the
+      first zero).</p>
+    </li>
+  </ul>
+  <p>The rule <em>excludes</em> at least the following things:</p>
+  <ul>
+    <li>
+      <p>Leading underscores before digits.</p>
+    </li>
+    <li>
+      <p>Trailing underscores after digits.</p>
+    </li>
+    <li>
+      <p>Two or more consecutive underscores.</p>
+    </li>
+    <li>
+      <p>Underscores between sign and magnitude.</p>
+    </li>
+    <li>
+      <p>Underscores next to a letter in a prefix. This includes
+      the <code>#b #o #d #x</code> radix prefixes, the <code>#e
+      #i</code> exactness prefixes and the
+      <code>#</code><em>n</em><code>r</code> arbitrary radix prefix
+      of Chez Scheme.</p>
+    </li>
+    <li>
+      <p>Underscores next to <code>#</code> unknown digit markers
+      in inexact numbers.</p>
+    </li>
+    <li>
+      <p>Underscores next to the <code>d D e E f F l L s S</code>
+      exponent markers.</p>
+    </li>
+    <li>
+      <p>Underscores next to the <code>@ + - i j k</code> markers
+      in complex and hypercomplex numbers.</p>
+    </li>
+    <li>
+      <p>Underscores next to the R<sup>6</sup>RS <code>|</code>
+      mantissa width suffix.</p>
+    </li>
+    <li>
+      <p>Underscores next to and within the <code>inf</code> and
+      <code>nan</code> markers.</p>
+    </li>
+  </ul>
+  <h3 id="_being_lenient_about_the_rule">Being lenient about the
+  rule</h3>
+  <p>Conforming implementations <em>may</em> be more lenient in
+  what they allow (perhaps to maintain compatibility with existing
+  code). In this document, numbers written according to the
+  underscore rule are called <em>conforming</em>. Other numbers
+  (which may or may not be valid depending on the implementation)
+  are called <em>non-conforming</em>.</p>
+  <h2 id="_examples">Examples</h2>
+  <h3 id="_integers">Integers</h3>
+  <pre><code>0123             ; conforming
+0_1_2_3          ; conforming
+0_123            ; conforming
+01_23            ; conforming
+012_3            ; conforming
++0123            ; conforming
++0_123           ; conforming
+-0123            ; conforming
+-0_123           ; conforming
+
+_0123            ; non-conforming
+0123_            ; non-conforming
+0123__           ; non-conforming
+01__23           ; non-conforming
+0_1__2___3       ; non-conforming
++_0123           ; non-conforming
++0123_           ; non-conforming
+-_0123           ; non-conforming
+-0123_           ; non-conforming</code></pre>
+  <h3 id="_rational_numbers">Rational numbers</h3>
+  <pre><code>1_2_3/4_5_6_7    ; conforming
+12_34/5_678      ; conforming
+
+1_2_3/_4_5_6_7   ; non-conforming
+_12_34/5_678     ; non-conforming</code></pre>
+  <h3 id="_real_numbers">Real numbers</h3>
+  <pre><code>0_1_23.4_5_6     ; conforming
+1_2_3.5e6        ; conforming
+1_2e1_2          ; conforming
+
+_0123.456        ; non-conforming
+0123_.456        ; non-conforming
+0123._456        ; non-conforming
+0123.456_        ; non-conforming
+123_.5e6         ; non-conforming
+123._5e6         ; non-conforming
+123.5_e6         ; non-conforming
+123.5e_6         ; non-conforming
+123.5e6_         ; non-conforming
+12_e12           ; non-conforming
+12e_12           ; non-conforming
+12e12_           ; non-conforming</code></pre>
+  <h3 id="_complex_numbers">Complex numbers</h3>
+  <pre><code>-12_3.0_00_00-12_34.56_78i    ; conforming
+-12_3.0_00_00@-12_34.56_78    ; conforming
+
+-12_3.0_00_00-12_34.56_78_i   ; non-conforming
+-12_3.0_00_00-12_34.56_78i_   ; non-conforming
+-12_3.0_00_00_@-12_34.56_78   ; non-conforming
+-12_3.0_00_00@_-12_34.56_78   ; non-conforming</code></pre>
+  <h3 id="_hypercomplex_numbers">Hypercomplex numbers</h3>
+  <p>Kawa supports quaternions using the following syntax:</p>
+  <pre><code>1+2i-3j+4k</code></pre>
+  <p>By applying the rule a syntax like that can be extended as
+  follows:</p>
+  <pre><code>1_0+2_0i-3_0j+4_0k   ; conforming
+
+1_0_+2_0i-3_0j+4_0k  ; non-conforming
+1_0+2_0_i-3_0j+4_0k  ; non-conforming
+1_0+2_0i-3_0j_+4_0k  ; non-conforming
+1_0+2_0i-3_0j+4_0k_  ; non-conforming</code></pre>
+  <h3 id="_units_of_measure">Units of measure</h3>
+  <p>Kawa supports units of measure using the following syntax:</p>
+  <pre><code>123456cm^2</code></pre>
+  <p>By applying the rule a syntax like that can be extended as
+  follows:</p>
+  <pre><code>123_456cm^2          ; conforming
+
+123_456_cm^2         ; non-conforming
+123_456.78_cm^2      ; non-conforming</code></pre>
+  <h3 id="_numbers_with_radix_or_exactness_prefixes">Numbers with
+  radix or exactness prefixes</h3>
+  <pre><code>#b10_10_10           ; conforming
+#o23_45_67           ; conforming
+#d45_67_89           ; conforming
+#xAB_CD_EF           ; conforming
+#x789_9B_C9_EF       ; conforming
+#x-2_0               ; conforming
+#o+2_345_6           ; conforming
+
+#x-_2                ; non-conforming
+_#x-_2               ; non-conforming
+#d_45_67_89          ; non-conforming
+#e_45/67_89          ; non-conforming
+#i#o_1234            ; non-conforming
+#i_#o_1234           ; non-conforming
+#e#x1234_            ; non-conforming</code></pre>
+  <h2 id="_implementation">Implementation</h2>
+  <p>The sample implementation is a portable library that depends
+  only on standard features in the R<sup>7</sup>RS small language.
+  It is available at:</p>
+  <p><a class="eponymous" href=
+  "https://github.com/scheme-requests-for-implementation/srfi-169">github.com/scheme-requests-for-implementation/srfi-169</a></p>
+  <p>The library exports one procedure <code>(read-number)</code>
+  which takes no arguments. The procedure reads one Scheme number
+  from <code>current-input-port</code> with support for optional
+  underscores. It signals an error if underscores are used in a
+  non-conforming way according to the rule stipulated in this SRFI,
+  or if the number syntax (sans underscores) does not conform to
+  the R<sup>7</sup>RS specification. The reader supports most of
+  the R<sup>7</sup>RS numeric tower with the notable exception of
+  complex numbers. The values of inexact numbers may diverge from
+  the values produced by the native reader of a Scheme
+  implementation if it uses different formulas for numeric
+  conversion.</p>
+  <p>The code was tested against the examples in this SRFI. Correct
+  results were obtained with Chibi-Scheme, Gauche and Kawa. The
+  test harness is included with the implementation.</p>
+  <h2 id="_acknowledgements">Acknowledgements</h2>
+  <p>This SRFI is the result of an impromptu design session on the
+  <code>srfi-discuss</code> mailing list over the weekend between
+  April 12th and April 15th, 2019.</p>
+  <p>Lassi Kortela suggested the idea, worked out the examples and
+  rationale, wrote this document and produced the sample
+  implementation. However the design is entirely a group
+  effort.</p>
+  <p>John Cowan provided invaluable expertise on human and computer
+  languages. He cautioned against requiring a fixed number of
+  digits per group and provided the Indian English example. John
+  found the extensive list of programming languages already using
+  underscores. John and Lassi cautioned against the ambiguity of
+  using commas as delimiters.</p>
+  <p>Per Bothner introduced Kawa's extended number syntax and noted
+  Common Lisp's <em>potential numbers</em> as prior art. Per and
+  John made sure the underscore syntax works when units of measure
+  are supported, considering prior art from Kawa's syntax and the
+  JavaScript community. Per explained Kawa's syntax for quaternions
+  which led to hypercomplex numbers being supported.</p>
+  <p>Shiro Kawai explained the approach of Gauche which can already
+  skip underscores when reading <code>#</code>-prefixed numbers. He
+  suggested extending Scheme's formal grammar.</p>
+  <p>Peter Bex cautioned against over-extending Scheme's already
+  intricate number syntax and potentially breaking
+  backward-compatibility for some programs. John and Lassi
+  advocated forbidding leading, trailing and repeated underscores
+  as a reasonable precaution. Arthur Gleckler suggested a dedicated
+  <code>#_</code> prefix and a user interface feature for text
+  editors as two failsafe alternatives.</p>
+  <p>Shiro, Peter and John reminded us that identifiers starting
+  with digits are forbidden in Scheme standards since
+  R<sup>4</sup>RS. But Jim Rees, Arthur and John brought up
+  <em>peculiar identifiers</em> which let implementations break
+  that rule.</p>
+  <p>Hugo Hörnquist had the idea of using Scheme's
+  <code>display</code> procedure to print numbers with underscores,
+  reserving <code>write</code> for portable syntax. John advised
+  that we postpone any decisions about printing, pointing to Alex
+  Shinn's SRFI 159 and SRFI 166 as potential solutions with a view
+  to the upcoming large edition of the R<sup>7</sup>RS
+  standard.</p>
+  <h2>Copyright</h2>
+  <p>Copyright © Lassi Kortela (2019)</p>
+  <p>Permission is hereby granted, free of charge, to any person
+  obtaining a copy of this software and associated documentation
+  files (the “Software”), to deal in the Software without
+  restriction, including without limitation the rights to use,
+  copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the
+  Software is furnished to do so, subject to the following
+  conditions:</p>
+  <p>The above copyright notice and this permission notice
+  (including the next paragraph) shall be included in all copies or
+  substantial portions of the Software.</p>
+  <p>THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY
+  KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+  WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE
+  AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+  HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+  WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+  OTHER DEALINGS IN THE SOFTWARE.</p>
+  <hr>
+  <address>
+    Editor: <a href=
+    "mailto:srfi-editors+at+srfi+dot+schemers+dot+org">Arthur A.
+    Gleckler</a>
+  </address>
+</body>
+</html>

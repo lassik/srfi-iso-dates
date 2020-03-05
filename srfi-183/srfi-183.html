@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>SRFI 183: Another format procedure, Fox</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/srfi.css" type="text/css" />
+    <link href="/favicon.png" rel="icon" sizes="192x192" type="image/png" />
+    <style>
+     .paragraph-list li {
+       margin-bottom: 1em;
+     }
+     .references a {
+       display: block;
+       margin: 0.5em 0;
+     }
+     .references td:first-child {
+       vertical-align: top;
+       width: 5em;
+     }
+    </style>
+  </head>
+
+<body>
+
+<h1>Title</h1>
+
+Another format procedure, Fox
+
+<h1>Author</h1>
+
+Joo ChurlSoo
+
+<h1>Status</h1>
+
+<p>This SRFI is currently in <em>draft</em> status.  Here is <a href="https://srfi.schemers.org/srfi-process.html">an explanation</a> of each status that a SRFI can hold.  To provide input on this SRFI, please send email to <code><a href="mailto:srfi+minus+183+at+srfi+dotschemers+dot+org">srfi-183@<span class="antispam">nospam</span>srfi.schemers.org</a></code>.  To subscribe to the list, follow <a href="https://srfi.schemers.org/srfi-list-subscribe.html">these instructions</a>.  You can access previous messages via the mailing list <a href="https://srfi-email.schemers.org/srfi-183">archive</a>.</p>
+<ul>
+  <li>Received: 2020/2/21</li>
+  <li>60-day deadline: 2020/4/22</li>
+  <li>Draft #1 published: 2020/2/22</li>
+</ul>
+
+<h1>Abstract</h1>
+
+<p>This SRFI introduces the formatting procedure Fox ("format of X"),
+  which takes one required argument and a variable number of additional
+  arguments and returns a formatted string.</p>
+
+<h1>Changes from SRFI 54</h1>
+
+<p>This SRFI is based on <a href="https://srfi.schemers.org/srfi-54/">SRFI 54</a>.
+  The optional arguments of the original CAT procedure were divided into
+  three groups: arguments only for the number type of &lt;object&gt;,
+  arguments for all types except the number type of &lt;object&gt;, and
+  arguments for all types of &lt;object&gt;.  This complexity could
+  confuse users.</p>
+
+<p>The optional arguments of this revised SRFI are divided into two
+  groups: arguments only for the number type of &lt;object&gt; and
+  arguments for all types of &lt;object&gt;.  This simplicity also
+  makes &lt;writer&gt; able to substitute for &lt;converter&gt;.  The
+  &lt;precision&gt; actually serves as ~G of Common Lisp's FORMAT and
+  %G of C's PRINTF.  The &lt;point&gt; of this revised one, an
+  additional optional argument, serves as ~F or ~E of Common Lisp's
+  FORMAT and %F or %E of C's PRINTF.  This revised CAT procedure, Fox,
+  is for speedup of non-numeric object types.  For this purpose, the
+  optional arguments only for the number type of object integrate into
+  a list-type argument, &lt;list-for-number&gt;.</p>
+
+<p>Additional extensions:</p>
+
+<ol>
+<li>All optional arguments can be applied to the number type of &lt;object&gt;.</li>
+<li>The default value of &lt;writer&gt; is the DISPLAY procedure.</li>
+<li>The &lt;width&gt; is an integer, and the &lt;precision&gt; is a non-negative exact integer.</li>
+<li>The new optional arguments &lt;point&gt; ('fixed or 'floating), &lt;pre-string&gt;, and &lt;post-string&gt; are added.</li>
+<li>The &lt;converter&gt; is integrated into the &lt;writer&gt;.</li>
+<li>The &lt;take&gt; and &lt;pipe&gt; arguments are integrated into a new argument, &lt;converter&gt;.</li>
+<li>The &lt;separator&gt; is changed from a list to a vector whose elements are a string and a non-zero exact integer.</li>
+<li>The infinities and NaNs of R6RS are supported.</li></ol>
+
+
+<h1>Rationale</h1>
+
+<p>It is difficult to gain a complete consensus on the design of a
+  generic formatting procedure that performs a variety of the
+  functions provided by C's PRINTF and Common Lisp's FORMAT.</p>
+
+<p>One way is to devise a free non-sequent method that easily handles
+  optional arguments, in contrast to the conventional fixed sequent
+  method, in order to obtain a handy optional and functional
+  interface.</p>
+
+<h1>Specification</h1>
+<pre>
+(fox &lt;object&gt;
+    [&lt;pre-string&gt;]			;string
+    [&lt;port&gt;]				;port or boolean
+    [&lt;width&gt;]				;integer
+    [&lt;char&gt;]				;char
+    [&lt;writer&gt;]				;procedure
+    [&lt;list-for-number&gt;]			;list
+    [&lt;converter&gt;]			;pair
+    [&lt;separator&gt;]			;vector
+    [&lt;post-string&gt;] ...)		;string
+</pre>
+
+<p>The &lt;list-for-number&gt; is a list whose elements are
+  &lt;precision&gt;, &lt;point&gt;, &lt;radix&gt;, &lt;sign&gt;, and
+  &lt;exactness&gt;.  They are effective only for the number type of
+  &lt;object&gt;.</p>
+
+<p>Except for &lt;string&gt;s, the order of all other optional
+  arguments does not matter.  When there is a &lt;string&gt; or
+  &lt;string&gt;s without the other optional arguments, the
+  &lt;string&gt; or &lt;string&gt;s are &lt;post-string&gt;.</p>
+
+<ol class="paragraph-list">
+
+  <li>The &lt;object&gt; is any Scheme object.</li>
+
+  <li>The &lt;width&gt; is an integer whose absolute value specifies
+    the width of the resulting string.  When the resulting string has
+    fewer characters than the absolute value of &lt;width&gt;, it is
+    placed rightmost with the rest being padded with &lt;char&gt;s, if
+    &lt;width&gt; is positive, or it is placed leftmost with the rest
+    being padded with &lt;char&gt;s, if &lt;width&gt; is negative, or
+    it is placed in the center (near to right in case of positive
+    &lt;width&gt;, or near to left in case of negative &lt;width&gt;)
+    with the rest being padded with &lt;char&gt;s, if &lt;width&gt; is
+    an inexact integer.  On the other hand, when the resulting string
+    has more characters than the absolute value of &lt;width&gt;, the
+    &lt;width&gt; is ignored.  The default value is 0.</li>
+
+  <li>The &lt;writer&gt; is a procedure of two arguments,
+    &lt;object&gt; and a string port.  It writes &lt;object&gt; to the
+    string port.  The default value is the DISPLAY procedure.  If you
+    want any objects to be displayed in your own way, you have to
+    define your own &lt;writer&gt;.  Otherwise, they are displayed
+    simply in their evaluated forms.  When a &lt;writer&gt; other than
+    the DISPLAY and WRITE procedures is used, the optional arguments
+    that are effective only for the number type of &lt;object&gt;
+    become ineffective.</li>
+
+  <li>The &lt;port&gt; is an output port or a boolean.  If an output
+    port is specified, the resulting string is output to the port.  If
+    &lt;port&gt; is #t, the output port is the current output port.
+    If &lt;port&gt; is #f, the resulting string is returned.  The
+    default value is #f.</li>
+
+  <li>The &lt;char&gt; is a padding character.  The default value is
+    #\space.</li>
+
+  <li>The &lt;converter&gt; is a pair whose car and cdr values are
+    exact integers or strings or procedures; m and n, and the absolute
+    values of m and n are M and N, respectively.  First, when the car
+    element is an exact integer, the resulting string takes from the
+    left m-characters, if it is positive, or all the characters but
+    M-characters, if non-positive.  When the car element is a string,
+    the string is prefixed.  When the car element is a procedure, the
+    procedure takes a string argument and returns a string as a pipe.
+    Second, when the cdr element is an exact integer, the resulting
+    string takes from the right n-characters of the string that is
+    processed by the car element, if it is positive, or all the
+    characters but N-characters, if non-positive.  When the cdr
+    element is a string, the string is postfixed to the string that is
+    processed by the car element.  When the cdr element is a
+    procedure, the procedure takes the string processed by the car
+    element as an argument and returns a string.</li>
+
+  <li>The &lt;separator&gt; is a vector whose elements are a string
+    serving as a separator, and a non-zero exact integer; n, and its
+    absolute value is N.  The resulting string is separated in every
+    N-characters of the resulting string from right end, if n is
+    positive, or from left end, if n is negative.  Even if n is a
+    negative integer, its absolute value is used for the number type
+    of &lt;object&gt;.  When the number of elements is one, the
+    &lt;separator&gt; is effective only for the number type of
+    &lt;object&gt;.  The default values of the elements are
+    &quot;,&quot; and 3 respectively.</li>
+
+  <li>The &lt;point&gt; is a symbol: fixed or floating.  Each returns
+    a string of decimal fraction or exponential representation.</li>
+
+  <li>The &lt;precision&gt; is a non-negative exact integer that
+    specifies the number of decimal digits after a decimal point.</li>
+
+  <li>The &lt;radix&gt; is a symbol: binary, octal, decimal, or
+    hexadecimal.  Each radix sign except decimal is prefixed to the
+    resulting string.  The default value is decimal.</li>
+
+  <li>If &lt;sign&gt; is a symbol that takes the form of 'sign, and
+    &lt;object&gt; is a positive number without a positive sign, the
+    positive sign is prefixed to the resulting string.</li>
+
+  <li>The &lt;exactness&gt; is a symbol: exact or inexact.  Each
+    returns a string of exact or inexact representation.</li>
+
+  <li>The resulting string is prefixed with &lt;pre-string&gt; and
+    postfixed with &lt;post-string&gt;s.</li></ol>
+
+  <h2>Examples</h2>
+<pre>
+(fox 129.995 -10 '(1))			-&gt; &quot;130.0     &quot;
+(fox 129.995 10 '(1))			-&gt; &quot;     130.0&quot;
+(fox 129.995 -10. #\* '(1))		-&gt; &quot;**130.0***&quot;
+(fox 129.995 10. #\* '(1))		-&gt; &quot;***130.0**&quot;
+(fox 129.995 10. #\* '(2))		-&gt; &quot;**130.00**&quot;
+
+(fox 4048 10 #\* '(hexadecimal))	-&gt; &quot;*****#xfd0&quot;
+(fox 4048 10 #\* '(hexadecimal sign))	-&gt; &quot;****#x+fd0&quot;
+(fox 4048 10 #\0 '(hexadecimal sign))	-&gt; &quot;#x+0000fd0&quot;
+(fox 4048 10 #\0 '(hexadecimal sign) `(,string-upcase . 0))	-&gt; &quot;#X+0000FD0&quot;
+(fox 4048 10 #\B '(hexadecimal sign) `(0 . ,string-upcase))	-&gt; &quot;#X+BBBBFD0&quot;
+(fox 4048 10 #\Z '(hexadecimal sign) `(,string-upcase . 0))	-&gt; &quot;ZZZZ#X+FD0&quot;
+
+(fox 129.995 10 '(2 sign) '(&quot;$&quot; . 0))	-&gt; &quot;  $+130.00&quot;
+(fox 129.995 10 '(2 sign) '(&quot;$&quot; . -3))	-&gt; &quot;     $+130&quot;
+
+(fox 123000000 '(floating))	    	-&gt; &quot;1.23e+8&quot;
+(fox 123000000 '(5 floating))	    	-&gt; &quot;1.23000e+8&quot;
+(fox 1.23456789e+20 '(fixed))		-&gt; &quot;123456789000000000000.0&quot;
+
+(fox 123456789.012 '(sign) '#(&quot;,&quot;))	-&gt; &quot;+123,456,789.012&quot;
+(fox 123456789 '(sign) '#(&quot;,&quot; 4))	-&gt; &quot;+1,2345,6789&quot;
+(fox &quot;abcdefg&quot; '(sign) '#(&quot;,&quot;))		-&gt; &quot;abcdefg&quot;
+(fox &quot;abcdefg&quot; '(sign) '#(&quot;::&quot; 2))	-&gt; &quot;a::bc::de::fg&quot;
+(fox &quot;abcdefg&quot; '(sign) '#(&quot;::&quot; -2))	-&gt; &quot;ab::cd::ef::g&quot;
+
+(fox '(#\a &quot;str&quot; s))   	       		-&gt; &quot;(a str s)&quot;
+(fox '(#\a &quot;str&quot; s) write)     		-&gt; &quot;(#\\a \&quot;str\&quot; s)&quot;
+
+(fox 129.995 10. #\* '(0) '(&quot;|&quot; . &quot;|&quot;))	-&gt;  &quot;**|130.|**&quot;
+(fox 129.995 &quot;|&quot; 10. #\* '(0) &quot;|&quot;)	-&gt; &quot;|***130.***|&quot;
+
+(fox 'String &quot;^&quot; (current-output-port) 10 #\* &quot;$&quot;)	-&gt;  ^****String$
+(fox 'String &quot;^&quot; #t 10 #\* &quot;$&quot;)	       	     		-&gt;  ^****String$
+(fox 'String &quot;^&quot; #f 10 #\* &quot;$&quot;)				-&gt; &quot;^****String$&quot;
+(fox 'String &quot;^&quot; 10 #\* &quot;$&quot;)				-&gt; &quot;^****String$&quot;
+
+(define-record-type example
+  (make-example num str)
+  example?
+  (num get-num set-num!)
+  (str get-str set-str!))
+
+(define (record-writer object string-port)
+  (if (example? object)
+      (begin (display (get-num object) string-port)
+	     (display &quot;-&quot; string-port)
+	     (display (get-str object) string-port))
+      (display object string-port)))
+
+(define (record-display object string-port)
+  (display (get-num object) string-port)
+  (display &quot;-&quot; string-port)
+  (display (get-str object) string-port))
+
+(let ((plus 12345678.901)
+      (minus -123456.789)
+      (ex (make-example 1234 &quot;ex&quot;))
+      (file &quot;today.txt&quot;))
+  (for-each
+   (lambda (x y)
+     (fox x #t 10 (fox y 15 '(2) record-writer '#(&quot;,&quot;)))
+     (fox x #t 10)
+     (fox y #t 15 '(2) (if (example? y) record-display display) '#(&quot;,&quot;))
+     (newline))
+   (list &quot;plus: &quot; &quot;minus: &quot; &quot;net: &quot; &quot;ex: &quot; &quot;file: &quot;)
+   (list plus minus (+ plus minus) ex file)))
+-&gt;
+    plus:  12,345,678.901    plus:   12,345,678.90
+   minus:    -123,456.789   minus:     -123,456.79
+     net:  12,222,222.112     net:   12,222,222.11
+      ex&#0058;         1234-ex      ex&#0058;         1234-ex
+    file:       today.txt    file:       today.txt
+</pre>
+
+<h1>Sample Implementation</h1>
+
+<p>The sample implementation available both in the <a href="https://github.com/scheme-requests-for-implementation/srfi-183">Github repo</a> and in <a href= "https://srfi.schemers.org/srfi-183/srfi-183.tgz">this <code>.tgz</code> file</a>.</p>
+
+<h1>References</h1>
+<table class="references">
+  <tr><td>[R5RS]</td><td>Richard Kelsey, William Clinger, and Jonathan Rees: Revised(5) Report on the Algorithmic Language Scheme. <a class="eponymous" href="http://www.schemers.org/Documents/Standards/R5Rs/">http://www.schemers.org/Documents/Standards/R5Rs/</a></td></tr>
+<tr><td>[R6RS]</td><td>Michael Sperber, R. Kent Dybvig, Matthew Flatt, and Anton von Straaten: Revised(6) Report on the Algorithmic Language Scheme. <a class="eponymous" href="http://www.r6rs.org">http://www.r6rs.org</a></td></tr>
+<tr><td>[SRFI 54]</td><td>Joo ChurlSoo: Formatting. <a class="eponymous" href="http://srfi.schemers.org/srfi-54/">http://srfi.schemers.org/srfi-54/</a></td></tr></table>
+
+<h1>Copyright</h1>
+
+Copyright &copy; Joo ChurlSoo (2012).
+
+<p>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+<p>
+The above copyright notice and this permission notice (including the
+next paragraph) shall be included in all copies or substantial
+portions of the Software.
+
+<p>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+<address>Editor: <a href="mailto:srfi-editors+at+srfi+dot+schemers+dot+org">Arthur A. Gleckler</a></address>
+</body>
+</html>

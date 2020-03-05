@@ -1,0 +1,973 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+  <head>
+    <title>SRFI 164: Enhanced multi-dimensional Arrays</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/srfi.css" type="text/css" />
+    <link href="/favicon.png" rel="icon" sizes="192x192" type="image/png" />
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<style type="text/css">
+  div.title h1 { font-size: small; color: blue }
+  div.title { font-size: xx-large; color: blue; font-weight: bold }
+  h1 { font-size: x-large; color: blue }
+  h2 { font-size: large; color: blue }
+  h3 { color: blue }
+  /* So var inside pre gets same font as var in paragraphs. */
+  var { font-family: monospace; }
+  em.non-terminal { }
+  em.non-terminal-def { }
+  code.literal { font-style: normal; }
+/*  code.literal:before { content: "“" }  code.literal:after { content: "”" } */
+  span.proc-def { font-weight: bold }
+  code.function { font-weight: bold }
+  p.synopsis { background-color: #DCffDC }
+  blockquote { margin-top: 0.5ex }
+</style>
+  </head>
+
+<body>
+<div class="title">
+<h1>Title</h1>
+Enhanced multi-dimensional Arrays
+</div>
+
+<h1>Author</h1>
+Per Bothner
+
+<h1>Status</h1>
+
+<p>This SRFI is currently in <em>final</em> status.  Here is <a href="https://srfi.schemers.org/srfi-process.html">an explanation</a> of each status that a SRFI can hold.  To provide input on this SRFI, please send email to <code><a href="mailto:srfi+minus+164+at+srfi+dotschemers+dot+org">srfi-164@<span class="antispam">nospam</span>srfi.schemers.org</a></code>.  To subscribe to the list, follow <a href="https://srfi.schemers.org/srfi-list-subscribe.html">these instructions</a>.  You can access previous messages via the mailing list <a href="https://srfi-email.schemers.org/srfi-164">archive</a>.</p>
+<ul>
+  <li>Received: 2018/11/2</li>
+  <li>Draft #1 published: 2018/11/2</li>
+  <li>Draft #2 published: 2018/11/17</li>
+  <li>Draft #3 published: 2018/12/7</li>
+  <li>Draft #4 published: 2019/3/5</li>
+  <li>Draft #5 published: 2019/7/20</li>
+  <li>Finalized: 2019/8/8</li>
+</ul>
+
+<h1>Abstract</h1>
+<p>This SRFI describes the array data type (a generalization of vectors
+to multiple indexes or dimensions), along with a set of procedures
+for working on them.
+<p>This specification is an extension of <a class="ulink" href="http://srfi.schemers.org/srfi-25/srfi-25.html" target="_top">SRFI 25</a>,
+with additions from Racket’s
+<a class="ulink" href="https://docs.racket-lang.org/math/array.html" target="_top">math.array</a> package
+and other sources.
+It has been implemented in the
+<a href="https://www.gnu.org/software/kawa/Arrays.html">Kawa dialect of Scheme</a>.
+
+<h1>Rationale</h1>
+<p>
+This specification aims for compatibility with SRFI 25 and SRFI 4.
+It also takes ideas from Racket, Kawa, and Guile.
+<p>
+Some notes comparing with <a href="https://srfi.schemers.org/srfi-122/srfi-122.html">SRFI 122</a>:
+<ul>
+<li>
+SRFI 122 invents more terminology and procedure names,
+and is less concerned with compatibility with previous SRFIs.
+<li>SRFI 122 has a concept of <dfn>storage classes</dfn>.
+I believe uniform vectors subsume most of the need,
+and <code>build-array</code> with a <var>setter</var> argument
+can handle the rest.
+<li>SRFI 122 has a distinct <dfn>interval</dfn> type,
+which serves the purpose of the specification's <dfn>shape</dfn>.
+There are a number of potentially useful procedures for working with
+intervals, but it's not clear if they'd be used enough
+to justify standardization.
+</ul>
+
+<h1>Specification</h1>
+<h3>Generalized vectors</h3>
+<p>
+A <dfn>generalized vector</dfn> (<dfn>gvector</dfn>)
+is a subclass of sequences that support random access (O(1) indexing).
+All standard Scheme vectors are gvectors.
+Which other types are gvectors is implementation-dependent,
+but if the implementation supports uniform vectors
+(also known as homogeneous vectors), they <em>should</em> also be gvectors.
+This specification assumes that a <dfn>range</dfn> is a gvector;
+ranges need a separate specification &mdash; see below.</p>
+<p>
+An implementation may provide other kinds of gvectors, or
+provide a mechanism to define new gvector types,
+but that is not part of this specification.</p>
+<p>
+An implementation may generalize standard vector procedures
+such as <code>vector-ref</code> and <code>vector-length</code>
+to work on gvectors, but that is not required by this specification.
+</p>
+<h3>Array values</h3>
+<p>Arrays are heterogeneous data structures that generalize vectors to multiple
+indexes or dimensions.  The number of required indexes
+is the <dfn>rank</dfn> or the number of dimensions of an array.
+In addition, while for gvectors the lowest index is 0, we generalize
+this to allow any other exact integer to be the <dfn>lower bound</dfn>.
+<p>
+Arrays are an extension of gvectors:
+Every gvector is an array whose rank is 1, and
+where the (single) lower bound is 0.
+Conversely, an array whose rank is 1 and
+where the (single) lower bound is 0 is usually a gvector,
+but this is not required to always be the case.
+A library-based implementation of this specification <em>should</em> use
+the existing vector type
+for "simple" (see below) rank-1 zero-lower-bound arrays.
+</p>
+<p>A rank-0 array has a single value.  It is essentially a box for that
+value.  Functions that require arrays may treat non-arrays
+as rank-0 arrays containing that value.
+</p>
+<p>An array of rank 2 is frequently called a <em class="firstterm">matrix</em>.
+</p>
+<p>
+Arrays may be mutable or immutable.</p>
+<p>
+The examples use the array literal syntax and <code>format-array</code> helper function
+of <a href="https://srfi.schemers.org/srfi-163/srfi-163.html">SRFI 163</a>
+for illustrative purposes.
+However, this specification does not require SRFI 163 (or vice versa),
+though they are designed to work well together.
+<p><a href="https://en.wikipedia.org/wiki/Row-_and_column-major_order">Row-major</a> or lexicographic order means viewing all the array elements as a
+sequence, with the right-most index changing more frequently.
+The row-major index of an element is its position (starting with 0)
+when the elements are considered in row-major order.
+<p id="simple-array">
+A <dfn>simple array</dfn> has all its elements stored contiguously
+in row-major order.
+Which arrays are simple depends on the implementation,
+but all arrays created by array literals, <code>make-array</code>,
+or <code>array</code> are simple.
+A vector created by a vector literal, or standard R7RS or SRFI 4 procedures
+(such as <code>make-vector</code> or <code>f32vector</code>)
+is a <dfn>simple vector</dfn> and thus a simple array.
+In addition, if the first argument to <code>array-reshape</code>
+or <code>array-&gt;vector</code> is simple, so is the result.
+Typically (i.e. in many implementations), a simple array is a simple
+transformation (row-major order, as if using <code>array-reshape</code>) of an
+<dfn id="underlying-vector">underlying (simple) vector</dfn>.
+(The underlying vector of a simple vector is itself.)
+<p class="synopsis" kind="Procedure"><code class="function">(array?</code> <var>obj</var><code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote"><p>Returns <code class="literal">#t</code> if <var>obj</var> is an array, otherwise returns <code class="literal">#f</code>.
+Note this also returns true for a (generalized) vector.
+</p></blockquote></div>
+
+<div class="sect2">
+<h3 id="Ranges">Ranges (non-normative)</h3>
+<p>
+A <dfn>range</dfn> is an immutable linear sequence of values,
+defined in terms of a <var>start</var> value,
+the difference between successive elements or <var>step</var>,
+and an optional <var>length</var>.
+The range is <dfn>unbound</dfn> (non-finite) if <var>length</var> is missing.
+The <var>start</var> and <var>step</var> values
+are usually exact integers (and must be so when used for indexing),
+but generally can be any real numbers (or more generally taken
+from an enumerable set).
+The value of element <var>i</var>
+is <var>start + i * step</var>, as long as <var>i &lt; length</var>.
+It is strongly recommended (but not required) that there
+be a separate gvector type for ranges
+that only stores <var>length</var>, <var>step</var>, and <var>length</var>.
+<p>
+Ranges are convenient way to specify slices and other regular array sections.
+This specification does not define an API for ranges,
+but some of the later examples make use of the syntax for
+<a href="https://www.gnu.org/software/kawa/Ranges.html">Kawa ranges</a>,
+purely for illustrative purposes.
+We summarize this syntax here.
+</p>
+<div kind="Procedure">
+<p class="synopsis" kind="Procedure"><p class="synopsis"><code>[</code> <var>start</var> <var>[</var><code>by:</code> <var>step</var><var>]</var> <code>size:</code> <var>length</var><code>]</code>
+<blockquote><p>Create a range with the specified <var>start</var>,
+<var>step</var> (which defaults to 1), and <var>length</var>.
+The sequence of values is the same as SRFI 1's <code>(iota <var>count</var> <var>start</var> <var>step</var>)</code>.
+</p></blockquote>
+</div>
+<p>
+Instead of specifying a <var>length</var> directly, it is sometimes more
+convenient to specify a final value, or an upper/lower bound:
+<div kind="Procedure">
+<p class="synopsis" kind="Procedure"><p class="synopsis"><code>[</code> <var>start</var> <var>[</var><code>by:</code> <var>step</var><var>]</var> <code>&lt;:</code>  <var>end</var><code>]</code></p>
+<p class="synopsis" kind="Procedure"><p class="synopsis"><code>[</code> <var>start</var> <var>[</var><code>by:</code> <var>step</var><var>]</var> <code>&lt;=:</code>  <var>end</var><code>]</code>
+<blockquote><p>
+In these cases, the sequence counts up: The <em class="replaceable">step</em> must be positive, and defaults to 1.
+The implied <var>length</var> is the maximum such that
+all the values <var>x</var> satisfy <code class="literal">(&lt; <var>x</var> <var>end</var>)</code>,
+or <code class="literal">(&lt;= <var>x</var> <var>end</var>)</code>, respectively.
+</p>
+<p>
+To count down, use <code>&gt;:</code> or <code>&gt;=:</code>
+in place of <code>&lt;:</code> or <code>&lt;=:</code>,
+with <code>step:</code> defaulting to -1.
+</blockquote></div>
+</div>
+<p>
+If the <var>length</var> is unspecified,
+the result is an <dfn>unbounded</dfn> or non-finite range.
+When used for array indexing, they can be treated
+as a short-hand for a context-dependent length:
+The longest range such that the index values are valid.
+</p>
+<div kind="Procedure"><p class="synopsis"><code>[</code> <var>start</var> <code>&lt;:</code><code>]</code></p>
+<p class="synopsis"><code>[</code> <var>start</var> <code>by:</code> <var>step</var><code>]</code></p>
+<blockquote class="blockquote"><p>Creates an unbounded (non-finite) range, where <var>step</var> defaults to 1.
+The result is an infinite sequence of values, starting with <var>start</var>, and followed by
+<code class="literal">(+ <var>start</var> <var>step</var>)</code>,
+<code class="literal">(+ <var>start</var> (* 2 <var>step</var>))</code>, and so on.
+For example, <code>[3 by: 2]</code> is the odd integers starting at 3.</p></blockquote></div>
+<p>
+The syntax <code>[&lt;:]</code> or <code>[&gt;:]</code> is a <dfn>pseudo-range</dfn>.  The <var>start</var> value is implicit and context-dependent.
+
+<div class="sect2">
+<h3>Array shape</h3>
+<p>The <em class="firstterm">shape</em> of an array consists of bounds for each index.
+</p>
+<p>The lower bound <em class="replaceable"><code>b</code></em> and the upper bound <em class="replaceable"><code>e</code></em> of a dimension are
+exact integers with <code class="literal">(&lt;= <em class="replaceable"><code>b</code></em> <em class="replaceable"><code>e</code></em>)</code>. A valid index along the
+dimension is an exact integer <em class="replaceable"><code>i</code></em> that satisfies both
+<code class="literal">(&lt;= <em class="replaceable"><code>b</code></em> <em class="replaceable"><code>i</code></em>)</code> and <code class="literal">(&lt; <em class="replaceable"><code>i</code></em> <em class="replaceable"><code>e</code></em>)</code>.
+The length of the array along the dimension is the difference
+<code class="literal">(- <em class="replaceable"><code>e</code></em> <em class="replaceable"><code>b</code></em>)</code>.
+The size of an array is the product of the lengths of its dimensions.
+</p>
+<p>
+There is no separate data type for a shape.
+The canonical representation for a shape (a <dfn>canonical shape</dfn>)
+is a rank-2 array where the first index is the dimension (zero-based),
+and the second index is 0 or 1:
+Elements <code>#(<var>i</var> 0)</code> and <code>#(<var>i</var> 1)</code>
+are respectively the lower bound and upper bound of dimension <var>i</var>.
+<p>
+For convenience, the procedures in this specification that
+require a <em class="replaceable"><code>shape</code></em>
+can accept a <dfn>shape-specifier</dfn>, as if converted by
+the procedure <code>-&gt;shape</code>.
+For example <code>(array-reshape <var>array</var> <var>shape</var>)</code>
+is equivalent to <code>(array-reshape <var>array</var> (-&gt;shape <var>shape</var>))</code>.
+<div kind="Procedure">
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def" id="to-shape">-&gt;shape</span></code> <var>specifier</var><code>)</code></p>
+<blockquote><p>
+Convert the shape specifier <var>specifier</var> to a canonical shape.
+We use as examples a 2*3 array with lower bounds 0
+and a 3*4 array with lower bounds 1.
+</p>
+<ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p>A vector of simple integers.
+Each integer <em class="replaceable"><code>e</code></em> is an upper bound,
+with a zero lower bound.
+Equivalent to a range with start 0, step 1, and length <var>e</var>.
+<p>
+Examples: <code>#(2 3)</code>, and the second is not expressible.
+</p></li>
+<li class="listitem"><p>A vector of lists of length 2.
+The first element of each list is the lower bound, and the second is the upper bound.
+<p>
+Examples: <code>#((0 2) (0 3))</code> and <code>#((1 3) (1 4))</code>.
+</p></li>
+<li class="listitem"><p>A vector of simple ranges, one for each
+dimension, all of which are
+bounded (finite), consist of integer values,
+and have a <var>step</var> of 1.
+Each range expresses the bounds of the corresponding dimension.
+<p>
+Examples, using the Kawa syntactic sugar:
+<code>`#(,[0 &lt;: 2] ,[0 &lt;=: 2])</code> and
+<code>`#(,[1 &lt;: 3] ,[1 size: 4])</code>.
+</p></li>
+<li class="listitem"><p>A vector consisting of a mix of integers, length-2 lists, and ranges.
+<p>
+Examples:  <code>#(2 (0 3))</code> and <code>`#((1 3) ,[1 size: 4])</code>.
+</p></li>
+<li class="listitem"><p>A canonical shape: A rank-2 array <em class="replaceable"><code>S</code></em> whose own shape is <code class="literal">#(<var>r</var> 2)</code>.
+For each dimension <em class="replaceable"><code>k</code></em>
+(where <code class="literal">(&lt;= <em class="replaceable"><code>k</code></em> 0)</code> and <code class="literal">(&lt; <em class="replaceable"><code>k</code></em> <em class="replaceable"><code>r</code></em>)</code>),
+the lower bound <em class="replaceable"><code>b<sub>k</sub></code></em> is <code class="literal">(S <em class="replaceable"><code>k</code></em> 0)</code>,
+    and the upper bound <em class="replaceable"><code>e<sub>k</sub></code></em> is <code class="literal">(S <em class="replaceable"><code>k</code></em> 1)</code>.
+<p>
+Examples: <code>#2a((0 2) (0 3))</code> and <code>#2a((1 3) (1 4))</code>.
+</p></li>
+</ul></blockquote></div>
+<p class="synopsis" kind="Procedure"><code>(<span class="proc-def">shape</span></code> <var>bound</var> <var>...</var><code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote">
+<p>Returns a shape, in the canonical <code>(<var>r</var> 2)</code> form.
+The sequence <var>bound</var> ... must consist of an even number
+of exact integers that are pairwise not decreasing. Each pair gives the
+lower and upper bound of a dimension.
+If the shape is used to specify the dimensions of an array
+and <em class="replaceable"><code>bound</code></em> ... is the sequence <em class="replaceable"><code>b0</code></em> <em class="replaceable"><code>e0</code></em> ... <em class="replaceable"><code>bk</code></em> <em class="replaceable"><code>ek</code></em>
+... of <em class="replaceable"><code>n</code></em> pairs of bounds, then a valid index to the array is any
+sequence <em class="replaceable"><code>j0</code></em> ... <em class="replaceable"><code>jk</code></em> ... of <em class="replaceable"><code>n</code></em> exact integers where
+each <em class="replaceable"><code>jk</code></em> satisfies <code class="literal">(&lt;= <em class="replaceable"><code>bk</code></em> <em class="replaceable"><code>jk</code></em>)</code>
+and <code class="literal">(&lt; <em class="replaceable"><code>jk</code></em> <em class="replaceable"><code>ek</code></em>)</code>.
+</p>
+<p>The shape of a <em class="replaceable"><code>d</code></em>-dimensional array is a <em class="replaceable"><code>d</code></em> * 2 array
+where the element at <em class="replaceable"><code>k 0</code></em> contains the lower bound for an index along
+dimension <em class="replaceable"><code>k</code></em> and the element at <em class="replaceable"><code>k 1</code></em> contains the
+corresponding upper bound, where <em class="replaceable"><code>k</code></em> satisfies <code class="literal">(&lt;=  0 <em class="replaceable"><code>k</code></em>)</code>
+and <code class="literal">(&lt; <em class="replaceable"><code>k</code></em> <em class="replaceable"><code>d</code></em>)</code>.
+</p>
+<p><code class="literal">(apply shape <em class="replaceable"><code>bounds</code></em>)</code>
+is equivalent to:
+<code class="literal">(apply array (vector (/ (length <var>bounds</var>) 2) 2) <var>bounds</var>)</code>
+</p>
+</blockquote></div>
+<div kind="Procedure">
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def" id="array-shape">array-shape</span></code> <var>array</var><code>)</code></p>
+<blockquote><p>Return the shape of <var>array</var> in the canonical (r 2) form.
+It is an error to attempt to modify the shape array.
+</p></blockquote>
+</div>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def" id="array-rank">array-rank</span></code> <var>array</var><code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote">
+<p>Returns the number of dimensions of <em class="replaceable"><code>array</code></em>.
+</p>
+<pre class="screen">(array-rank
+  (make-array (shape 1 2 3 4)))
+</pre>
+<p>Returns 2.
+</p>
+</blockquote></div>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def" id="array-start">array-start</span></code> <var>array</var> <var>k</var><code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote"><p>Returns the lower bound (inclusive) for the index along dimension <var>k</var>.
+This is most commonly 0.
+Same as <code>(array-ref (array-shape <var>array</var>) <var>k</var> 0)</code>.
+</p></blockquote></div>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def">array-end</span></code> <var>array</var> <var>k</var><code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote"><p>Returns the upper bound for the index along dimension <em class="replaceable"><code>k</code></em>.
+The bound is exclusive &mdash; i.e. the first integer higher
+than the last legal index.
+Same as <code>(array-ref (array-shape <var>array</var>) <var>k</var> 1)</code>.
+</p></blockquote></div>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def" id="array-size">array-size</span></code> <var>array</var><code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote"><p>Return the total number of elements of <var>array</var>.
+This is the product of <code class="literal">(- (array-end <em class="replaceable"><code>array</code></em> <em class="replaceable"><code>k</code></em>) (array-start <em class="replaceable"><code>array</code></em> <em class="replaceable"><code>k</code></em>))</code> for every valid <em class="replaceable"><code>k</code></em>.
+</p></blockquote></div>
+</div>
+<div class="sect2">
+<h3 class="title" id="Array-construction">Array construction</h3>
+<p>See also <a href="#array-reshape"><code class="literal">array-reshape</code></a>.
+</p>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def">array</span></code> <em class="replaceable"><code>shape</code></em> <var>obj</var> <var>...</var><code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote"><p>Returns a new array whose shape is given by <em class="replaceable"><code>shape</code></em> and the initial
+contents of the elements are <em class="replaceable"><code>obj</code></em> ... in row-major order. The array does
+not retain a reference to <em class="replaceable"><code>shape</code></em>.
+</p></blockquote></div>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def">make-array</span></code> <var>shape</var><code>)</code></p>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def">make-array</span></code> <var>shape</var> <var>value...</var><code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote">
+<p>Returns a newly allocated mutable array whose shape is given by <em class="replaceable"><code>shape</code></em>.
+If <em class="replaceable"><code>value</code></em> is provided, then each element is initialized to it.
+If there is more than one <em class="replaceable"><code>value</code></em>, they are used in order, starting
+over when the <em class="replaceable"><code>value</code></em>s are exhausted.
+If there is no <em class="replaceable"><code>value</code></em>, the initial contents of each element is
+unspecified.
+The array does not retain a reference to <em class="replaceable"><code>shape</code></em>.
+</p>
+<pre class="screen"><strong class="userinput"><code>(make-array #(2 4) 1 2 3 4 5)</code></strong> &#x21e8;
+╔#2a:2:4╗
+║1│2│3│4║
+╟─┼─┼─┼─╢
+║5│1│2│3║
+╚═╧═╧═╧═╝
+</pre>
+<p><span class="emphasis"><em>Compatibility:</em></span> Guile has an incompatible <code class="literal">make-array</code> procedure.
+</p>
+</blockquote></div>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def">build-array</span></code> <var>shape</var> <var>getter</var> [<var>setter</var>]<code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote">
+<p>Construct a <q>virtual array</q> of the given <em class="replaceable"><code>shape</code></em> that uses no storage for the elements.
+Instead, elements are calculated on demand by calling <var>getter</var>,
+which takes a single argument, an index vector.
+</p>
+<p>There is no caching or memoization.
+</p>
+<pre class="screen"><strong class="userinput"><code>(build-array #2a((10 12) (0 3))</code></strong>
+<strong class="userinput"><code>  (lambda (ind)</code></strong>
+<strong class="userinput"><code>    (let ((x (vector-ref ind 0)) (y (vector-ref ind 1)))</code></strong>
+<strong class="userinput"><code>      (- x y))))</code></strong> &#x21e8;
+#2a@10:2:3
+║10│ 9│8║
+╟──┼──┼─╢
+║11│10│9║
+╚══╧══╧═╝
+</pre>
+<p>
+The resulting array is mutable if a <var>setter</var> is provided.
+The <var>setter</var>
+takes two arguments: An index vector, and the new value for the
+specified element.
+Below is a simple and space-efficient (but slow)
+implementation of sparse arrays: Most elements have a default initial
+value, but you can override specific elements.
+<pre>
+(define (make-sparse-array shape default-value)
+  (let ((vals '())) ;; association list of (INDEX . VALUE)
+    (build-array shape
+                 (lambda (I)
+                   (let ((v (assoc I vals)))
+                     (if v (cdr v)
+                         default-value)))
+                 (lambda (I newval)
+                   (let ((v (assoc I vals)))
+                     (if v
+                         (set-cdr! v newval)
+                         (set! vals (cons (cons I newval) vals))))))))
+</pre>
+</blockquote></div>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def">index-array</span></code> <var>shape</var><code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote">
+<p>Return a new immutable array of the specified <em class="replaceable"><code>shape</code></em>
+where each element is the corresponding row-major index.
+Same as <code class="literal">(array-reshape <var>r</var> <var>shape</var>)</code>
+  where <var>size</var> is the <code class="literal">array-size</code> of the resulting array, and
+<var>r</var> is a range whose <var>start</var> is 0, <var>step</var> is 1,
+and the same <var>size</var>.
+</p>
+<pre class="screen"><strong class="userinput"><code>(index-array #2a((1 3) (2 6)))</code></strong> &#x21e8;
+#2a@1:2@2:4
+║0│1│2│3║
+╟─┼─┼─┼─╢
+║4│5│6│7║
+╚═╧═╧═╧═╝
+</pre>
+</blockquote></div>
+</div>
+<div class="sect2">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="Array-indexing"></a>Array indexing</h3></div></div></div>
+<p>Given a rank-2 array <em class="replaceable"><code>arr</code></em> with integer indexes <em class="replaceable"><code>i</code></em>
+and <em class="replaceable"><code>j</code></em>, the following all get the element of <em class="replaceable"><code>arr</code></em>
+at index <code class="literal">[<em class="replaceable"><code>i</code></em> <em class="replaceable"><code>j</code></em>]</code>.
+</p>
+<pre>
+(array-index-ref <var>arr</var> <var>i</var> <var>j</var>)
+(array-ref <var>arr</var> <var>i</var> <var>j</var>)
+(array-ref <var>arr</var> (vector <var>i</var> <var>j</var>))
+</pre>
+<p>Using <code class="literal">array-index-ref</code>
+(but not plain <code class="literal">array-ref</code>) you can do generalized APL-style
+slicing and indirect indexing.
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def">array-ref</span></code> <var>array</var> <var>k</var> <var>...</var><code>)</code></p>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def">array-ref</span></code> <em class="replaceable"><code>array</code></em> <em class="replaceable"><code>index</code></em><code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote">
+<p>Returns the contents of the element of <em class="replaceable"><code>array</code></em> at index <em class="replaceable"><code>k</code></em> ....
+The sequence <em class="replaceable"><code>k</code></em> ... must be a valid index to <em class="replaceable"><code>array</code></em>.
+In the second form, <em class="replaceable"><code>index</code></em> must be a vector
+(a 0-based 1-dimensional array) containing <em class="replaceable"><code>k</code></em> ....
+</p>
+<pre class="screen">(array-ref (array #(2 3)
+              'uno 'dos 'tres
+              'cuatro 'cinco 'seis))
+   1 0)
+</pre>
+<p>Returns <code class="literal">cuatro</code>.
+</p>
+<pre class="screen">(let ((a (array (shape 4 7 1 2) 3 1 4)))
+   (list (array-ref a 4 1)
+         (array-ref a (vector 5 1))
+         (array-ref a (array (shape 0 2)
+                         6 1))))
+</pre>
+<p>Returns <code class="literal">(3 1 4)</code>.
+</p>
+</blockquote></div>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def">array-index-ref</span></code> <var>array</var> <var>index</var> <var>...</var><code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote">
+<p>Generalized APL-style array indexing, where each <em class="replaceable"><code>index</code></em>
+can be either an array or an integer.
+</p>
+<p>If each <var>index</var> is an integer,
+or there is no <var>index</var>,
+then the result is the same as <code class="literal">array-ref</code>.
+</p>
+<p>Otherwise, the result is an immutable array whose rank is the sum of the ranks of
+each <em class="replaceable"><code>index</code></em>.  An integer is treated as rank-0 array.
+The shape of the result is the <q>concatenation</q> of the shapes of
+indexes: The lower bounds are the concatenation of the lower bounds
+of the indexes, and similar for the upper bounds.
+(If an index is an unbounded range, it is truncated as needed to not
+cause an error.)
+</p>
+<p>If <em class="replaceable"><code>marr</code></em> is the result of <code class="literal">(array-index-ref <em class="replaceable"><code>arr</code></em> <em class="replaceable"><code>M<sub>1</sub></code></em> <em class="replaceable"><code>M<sub>2</sub></code></em> ...)</code> then:
+</p>
+<pre class="screen">(array-ref <var>marr</var> <em class="replaceable"><code>i<sub>11</sub></code></em> <em class="replaceable"><code>i<sub>12</sub></code></em> ... <em class="replaceable"><code>i<sub>21</sub></code></em> <em class="replaceable"><code>i<sub>22</sub></code></em> ...)
+</pre>
+<p>is defined as:
+</p>
+<pre class="screen">(array-ref <em class="replaceable"><code>arr</code></em> (array-ref <em class="replaceable"><code>M<sub>1</sub></code></em> <em class="replaceable"><code>i<sub>11</sub></code></em> <em class="replaceable"><code>i<sub>12</sub></code></em> ...) (array-ref <em class="replaceable"><code>M<sub>2</sub></code></em> <em class="replaceable"><code>i<sub>21</sub></code></em> <em class="replaceable"><code>i<sub>22</sub></code></em> ...) ...)
+</pre>
+<p>Each <em class="replaceable"><code>M<sub>k</sub></code></em> gets as many indexes as its rank.
+If <em class="replaceable"><code>M<sub>k</sub></code></em> is an integer, then it we use
+it directly without any indexing, as if it were a rank-0 array.
+</p>
+<p>
+The resulting array <var>marr</var> is a fresh array
+that does not depend on any of the arguments.
+Specifically, if <code>array-ref</code> is called on <var>marr</var>
+with valid indexes (within its shape), then no error is possible;
+any potentially invalid indexes must be caught by <code>array-index-ref</code>.
+<p>Here are some examples, starting with simple indexing.
+</p>
+<pre class="screen"><strong class="userinput"><code>(define arr (array #2a((1 4) (0 4))</code></strong>
+<strong class="userinput"><code>                   10 11 12 13 20 21 22 23 30 31 32 33))</code></strong>
+<strong class="userinput"><code>arr</code></strong> &#x21e8;
+╔#2a@1:3:4══╗
+║10│11│12│13║
+╟──┼──┼──┼──╢
+║20│21│22│23║
+╟──┼──┼──┼──╢
+║30│31│32│33║
+╚══╧══╧══╧══╝
+<strong class="userinput"><code>(array-index-ref arr 2 3)</code></strong> &#x21e8;
+23
+</pre>
+<p>If one index is a vector and the rest are scalar integers,
+then the result is a vector:
+</p>
+<pre class="screen"><strong class="userinput"><code>(array-index-ref arr 2 #(3 1))</code></strong> &#x21e8;
+#(23 21)
+</pre>
+<p>You can select a “sub-matrix” when all indexes are vectors:
+</p>
+<pre class="screen"><strong class="userinput"><code>(array-index-ref arr #(2 1) #(3 1 3))</code></strong> &#x21e8;
+╔#2a:2:3═╗
+║23│21│23║
+╟──┼──┼──╢
+║13│11│13║
+╚══╧══╧══╝
+</pre>
+<p>Using ranges for index vectors selects a rectangular sub-matrix.
+</p>
+<pre class="screen"><strong class="userinput"><code>(array-index-ref arr [1 &lt;: 3] [1 &lt;: 4))</code></strong> ;; Kawa range syntax &mdash; non-normative
+&#x21e8;
+╔#2a:2:3═╗
+║11│12│13║
+╟──┼──┼──╢
+║21│22│23║
+╚══╧══╧══╝
+</pre>
+<p>
+Using ranges makes for a convenient way to to express common <q>slice</q>
+operations while still keeping the API simple.
+Implementations are encouraged to optimize the case when all indexes
+are either integers or ranges.
+</p>
+<p>You can add new dimensions:
+</p>
+<pre class="screen"><strong class="userinput"><code>(array-index-ref arr #(2 1) #2a((3 1) (3 2)))</code></strong> &#x21e8;
+#3a╤══╗
+║23│21║
+╟──┼──╢
+║23│22║
+╠══╪══╣
+║13│11║
+╟──┼──╢
+║13│12║
+╚══╧══╝
+</pre>
+<p>
+The pseudo-range <code class="literal">[&lt;:]</code> can be used to select all the indexes
+along a dimension.  To select row 2 (1-origin):
+</p>
+<pre class="screen"><strong class="userinput"><code>(array-index-ref arr 2 [&lt;:])</code></strong> &#x21e8;
+#(20 21 22 23)
+</pre>
+<p>To reverse the order use <code class="literal">[&gt;:]</code>:
+</p>
+<pre class="screen"><strong class="userinput"><code>(array-index-ref arr 2 [&gt;:])</code></strong> &#x21e8;
+#(23 22 21 20)
+</pre>
+<p>To select column 3:
+</p>
+<pre class="screen"><strong class="userinput"><code>(array-index-ref arr [&lt;:] [3])</code></strong> &#x21e8;
+#2a╗
+║13║
+╟──╢
+║23║
+╟──╢
+║33║
+╚══╝
+</pre>
+<p>You can also repeat a column by repeating its index.
+For example since <code>[3 by: 0 size: 5]</code> is
+equivalent to <code>#(3 3 3 3 3)</code> (though possibly more efficient),
+you can expand column 3 to 5 equal columns thus:
+</p>
+<pre class="screen">
+<strong class="userinput"><code>(array-index-ref arr [&lt;:] [3 by: 0 size: 5])</code></strong> &#x21e8;
+╔#2a:3:5═╤══╤══╗
+║13│13│13│13│13║
+╟──┼──┼──┼──┼──╢
+║23│23│23│23│23║
+╟──┼──┼──┼──┼──╢
+║33│33│33│33│33║
+╚══╧══╧══╧══╧══╝
+</pre>
+</blockquote></div>
+</div>
+
+<div class="sect2"><h3 class="title" id="Modifying-arrays">Modifying arrays</h3>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def">array-set!</span></code> <var>array</var> <var>k</var> <var>...</var> <var>obj</var><code>)</code></p>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def">array-set!</span></code> <var>array</var> <var>index</var> <var>obj</var><code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote">
+<p>Stores <em class="replaceable"><code>obj</code></em> in the element of <em class="replaceable"><code>array</code></em> at index <em class="replaceable"><code>k</code></em> ....
+The result is unspecified.
+The sequence <em class="replaceable"><code>k</code></em> ... must be a valid index to <em class="replaceable"><code>array</code></em>.
+In the second form, <em class="replaceable"><code>index</code></em> must be either a vector or a
+0-based 1-dimensional array containing <em class="replaceable"><code>k</code></em> ....
+</p>
+<pre class="screen">(let ((a (make-array
+            (shape 4 5 4 5 4 5))))
+   (array-set! a 4 4 4 "huuhkaja")
+   (array-ref a 4 4 4))
+</pre>
+<p>Returns <code class="literal">"huuhkaja"</code>.
+</p>
+<p><span class="emphasis"><em>Compatibility:</em></span> SRFI 47, Guile and Scheme-48 have <code class="literal">array-set!</code> with a
+different argument order.
+</p>
+</blockquote></div>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def">array-copy!</span></code> <var>dst</var> <var>src</var><code>)</code></p>
+
+<div class="blockquote"><blockquote class="blockquote"><p>Both arguments must have the same shape.
+Every element in <var>dst</var> is replaced by the corresponding
+element in <var>src</var>.</p>
+<p><span class="emphasis"><em>Compatibility:</em></span> Guile has an <code class="literal">array-copy!</code> with the reversed
+argument order.
+</p></blockquote></div>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def">array-fill!</span></code> <var>array</var> <var>value</var><code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote"><p>Set all the values <em class="replaceable"><code>array</code></em> to <em class="replaceable"><code>value</code></em>.
+You can use <code>(array-fill! (array-index-share <em class="replaceable"><code>array</code></em> <em class="replaceable"><code>indexes</code></em>...) <em class="replaceable"><code>value</code></em>)</code> to set a subset of the array.
+</p></blockquote></div>
+</div>
+<div class="sect2"><h3 class="title" id="array-as-procedure">Array as procedure (non-normative)</h3>
+An optional extension (implemented in Kawa) is to allow
+<q>applying</q> a vector or array as a procedure.
+In such an implementation <code>(<var>vec</var> <var>i</var>)</code>
+is the same as <code>(vector-ref <var>vec</var> <var>i</var>)</code>,
+and it is suggested that
+<code>(<var>array</var> <var>index</var> ...)</code> should be
+equivalent to <code>(array-index-ref <var>array</var> <var>index</var> ...)</code>.
+<p>An implementation that also supports <a href="https://srfi.schemers.org/srfi-17/srfi-17.html">SRFI 17 (generalized <code>set!</code>)</a>
+should allow <code class="literal">set!</code> to modify one or multiple elements.
+To modify a single element:
+</p>
+<pre class="screen">(set! (<em class="replaceable"><code>arr</code></em> <em class="replaceable"><code>index</code></em> ...) <em class="replaceable"><code>new-value</code></em>)
+</pre>
+<p>should be equivalent to:
+</p>
+<pre class="screen">(array-set! <em class="replaceable"><code>arr</code></em> <em class="replaceable"><code>index</code></em> ... <em class="replaceable"><code>new-value</code></em>)
+</pre>
+<p>You can set a slice (or all of the elements).
+In that case:
+</p>
+<pre class="screen">(set! (<em class="replaceable"><code>arr</code></em> <em class="replaceable"><code>index</code></em> ...) <em class="replaceable"><code>new-array</code></em>)
+</pre>
+<p>is equivalent to:
+</p>
+<pre class="screen">(array-copy! (array-index-share <em class="replaceable"><code>arr</code></em> <em class="replaceable"><code>index</code></em> ...) <em class="replaceable"><code>new-array</code></em>)
+</pre>
+</div>
+<div class="sect2">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="Transformations-and-views"></a>Transformations and views</h3></div></div></div>
+<p>A view or transform of an array is an array <em class="replaceable"><code>a<sub>2</sub></code></em>
+whose elements come from some other array <em class="replaceable"><code>a<sub>1</sub></code></em>
+given some transform function <em class="replaceable"><code>T</code></em> that maps <em class="replaceable"><code>a<sub>2</sub></code></em> indexes
+to <em class="replaceable"><code>a<sub>1</sub></code></em> indexes.
+Specifically, <code class="literal">(array-ref <em class="replaceable"><code>a<sub>2</sub></code></em> <em class="replaceable"><code>indexes</code></em>)</code>
+is <code class="literal">(array-ref <em class="replaceable"><code>a<sub>1</sub></code></em> (<em class="replaceable"><code>T</code></em> <em class="replaceable"><code>indexes</code></em>))</code>.
+Modifying <em class="replaceable"><code>a<sub>2</sub></code></em> causes <em class="replaceable"><code>a<sub>1</sub></code></em> to be modified;
+modifying <em class="replaceable"><code>a<sub>1</sub></code></em> may modify <em class="replaceable"><code>a<sub>2</sub></code></em>
+(depending on the transform function).
+The shape of <em class="replaceable"><code>a<sub>2</sub></code></em> is in general different than that of <em class="replaceable"><code>a<sub>1</sub></code></em>.
+The result <em class="replaceable"><code>a<sub>2</sub></code></em> is
+mutable if and only if <em class="replaceable"><code>a<sub>1</sub></code></em>
+is, with the same element type restrictions, if any.
+</p>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def">array-transform</span></code> <var>array</var> <var>shape</var> <var>transform</var><code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote">
+<p>This is a general mechanism for creating a view.
+The result is a new array with the given <em class="replaceable"><code>shape</code></em>.
+Accessing this new array is implemented by calling the <em class="replaceable"><code>transform</code></em> function (which is <var>T</var> above)
+on the index vector, which must return a new index vector
+valid for indexing the original <em class="replaceable"><code>array</code></em>.
+Here is an example (using the same <code class="literal">arr</code> as in
+the <code class="literal">array-index-ref</code> example):
+</p>
+<pre class="screen"><strong class="userinput"><code>(define arr (array #2a((1 4) (0 4))</code></strong>
+<strong class="userinput"><code>                   10 11 12 13 20 21 22 23 30 31 32 33))</code></strong>
+<strong class="userinput"><code>(array-transform arr #2a((0 3) (1 3) (0 2))</code></strong>
+<strong class="userinput"><code>  (lambda (ix) (let ((i (vector-ref ix 0)) (j (vector-ref ix 1)) (k (vector-ref ix 2)))</code></strong>
+<strong class="userinput"><code>                 (vector (+ i 1)</code></strong>
+<strong class="userinput"><code>                         (+ (* 2 (- j 1)) k)))))</code></strong> &#x21e8;
+#3a:3@1:2:2
+║10│11║
+╟──┼──╢
+║12│13║
+╠══╪══╣
+║20│21║
+╟──┼──╢
+║22│23║
+╠══╪══╣
+║30│31║
+╟──┼──╢
+║32│33║
+╚══╧══╝
+</pre>
+<p>The <code class="literal">array-transform</code> procedure is a generalization of <code class="literal">share-array</code>
+in that it does not require the <em class="replaceable"><code>transform</code></em> to be affine.
+Also note the different calling conversions for the <em class="replaceable"><code>transform</code></em>:
+<code class="literal">array-transform</code> takes a single argument (a vector of indexes),
+and returns a single result (a vector of indexes);
+<code class="literal">share-array</code> takes one argument for each index, and returns
+one value for each index.  The difference is historical.
+</p>
+</blockquote></div>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def">array-index-share</span></code> <var>array</var> <var>index</var> <var>...</var><code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote"><p>This does the same generalized APL-style indexing
+as <code class="literal">array-index-ref</code>.  However, the resulting array
+is a modifiable view into the argument <em class="replaceable"><code>array</code></em>.
+If each index is an integer, the result is a rank-0 array
+that is a view of the selected element
+(unlike <code class="literal">array-index-ref</code>
+which would return the selected element directly).
+</p></blockquote></div>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def" id="array-reshape">array-reshape</span></code> <var>array</var> <var>shape</var><code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote"><p>Creates a new array <em class="replaceable"><code>narray</code></em> of the given <em class="replaceable"><code>shape</code></em>,
+such that <code class="literal">(array-&gt;vector <em class="replaceable"><code>array</code></em>)</code> and
+<code class="literal">(array-&gt;vector <em class="replaceable"><code>narray</code></em>)</code> are equivalent.
+In other words, the <em class="replaceable"><code>i</code></em>’th element in row-major-order of <em class="replaceable"><code>narray</code></em>
+is the <em class="replaceable"><code>i</code></em>’th element in row-major-order of <em class="replaceable"><code>array</code></em>.
+Hence <code class="literal">(array-size <em class="replaceable"><code>narray</code></em>)</code> (as specified from the <em class="replaceable"><code>shape</code></em>)
+must be equal to <code class="literal">(array-size <em class="replaceable"><code>array</code></em>)</code>.
+The resulting <em class="replaceable"><code>narray</code></em> is a view such that modifying <em class="replaceable"><code>array</code></em>
+also modifies <em class="replaceable"><code>narray</code></em> and vice versa.
+If <var>array</var> is <a href="#simple-array">simple</a>,
+the result is also simple and uses the
+same <a href="#underlying-vector">underlying vector</a> as <var>array</var>.
+</p></blockquote></div>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def">share-array</span></code> <var>array</var> <var>shape</var> <var>proc</var><code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote">
+<p>Returns a new array of <em class="replaceable"><code>shape</code></em> shape that shares elements of <em class="replaceable"><code>array</code></em>
+through <em class="replaceable"><code>proc</code></em>. The procedure <em class="replaceable"><code>proc</code></em> must implement an affine
+function that returns indices of <em class="replaceable"><code>array</code></em> when given indices of the
+array returned by <code class="literal">share-array</code>.
+The array does not retain a reference to <em class="replaceable"><code>shape</code></em>.
+</p>
+<pre class="screen">(define i_4
+   (let* ((i (make-array
+                (shape 0 4 0 4)
+                0))
+          (d (share-array i
+                (shape 0 4)
+                (lambda (k)
+                   (values k k)))))
+      (do ((k 0 (+ k 1)))
+          ((= k 4))
+         (array-set! d k 1))
+      i))
+</pre>
+<p>Note: the affinity requirement for <em class="replaceable"><code>proc</code></em> means that each value must
+be a sum of multiples of the arguments passed to <em class="replaceable"><code>proc</code></em>, plus a constant.
+</p>
+<p>Implementation note: arrays have to maintain an internal index mapping
+from indices <em class="replaceable"><code>k1</code></em> ... <em class="replaceable"><code>kd</code></em> to a single index into a backing vector;
+the composition of this mapping and <em class="replaceable"><code>proc</code></em> can be recognised
+as <code class="literal">(<em class="replaceable"><code>+ n0</code></em> (* <em class="replaceable"><code>n1</code></em> <em class="replaceable"><code>k1</code></em>) ... (* <em class="replaceable"><code>nd</code></em> <em class="replaceable"><code>kd</code></em>))</code>
+by setting each index in turn to 1 and others to 0,
+and all to 0 for the constant term; the composition can then be compiled
+away, together with any complexity that the user introduced in their
+procedure.
+</p>
+<p>Here is an example where the <var>array</var> is an
+<code>f64vector</code> (a vector of 64-bit floats, from SRFI-4):
+</p>
+<pre class="screen">(share-array
+  (f64vector 1.0 2.0 3.0 4.0 5.0 6.0)
+  (shape 0 2 0 3)
+  (lambda (i j) (+ (* 2 i) j)))
+   &#x21e8;  #2f64((1.0 2.0 3.0) (4.0 5.0 6.0))
+</pre>
+</blockquote></div>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def">array-flatten</span></code> <var>array</var><code>)</code></p>
+<p class="synopsis" kind="Procedure"><code class="function">(<span class="proc-def">array-&gt;vector</span></code> <var>array</var><code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote">
+<p>Return a vector consisting of the elements of the <em class="replaceable"><code>array</code></em>
+in row-major-order.
+</p>
+<p>The result of <code class="literal">array-flatten</code> is a fresh
+(mutable and simple) copy, not a view.
+The result of <code class="literal">array-&gt;vector</code> is a view: If <em class="replaceable"><code>array</code></em> is mutable,
+then modifying <em class="replaceable"><code>array</code></em> changes the flattened result and vice versa.
+</p>
+<p>If <var>array</var> is <a href="#simple-array">simple</a>,  <code class="literal">array-&gt;vector</code> returns
+the <a href="#underlying-vector">underlying vector</a>.
+Specifically, if <em class="replaceable"><code>vec</code></em> is a vector then:
+</p>
+<pre class="screen">(eq? <em class="replaceable"><code>vec</code></em> (array-&gt;vector (array-reshape <em class="replaceable"><code>vec</code></em> <em class="replaceable"><code>shape</code></em>)))
+</pre>
+</blockquote></div>
+</div>
+
+<h1>Implementation</h1>
+<p>
+The following describes how this API is implemented
+in <a href="https://www.gnu.org/software/kawa">Kawa</a>.
+The implementation is a mix of Java and the Kawa dialect of Scheme.
+This overview should be enough to implement the specification,
+but studying the Kawa implementation adds useful detail.
+<!--
+The Kawa implementation has a number of extra methods
+to avoid object allocation, both of index vectors, and when
+extracting immediate values from uniform arrays.
+(There are also special classes and methods for vectors.)
+For simplicity, we will ignore those optimizations here,
+and assume all vectors and arrays are general object arrays.--></p>
+<p>
+A simple vector (the abstract class <code>SimpleVector</code>) is a wrapper
+around a simple fixed-size native array of the appropriate type.
+There are sub-classes for different element types:
+General (simple) vectors (the class <code>FVector</code> which
+extends <code>SimpleVector</code>) uses an object array (<code>Object[]</code>),
+while an F32 vector (the class <code>F32Vector</code>)
+uses an array of floats (a <code>float[]</code>).</p>
+<p>
+By default, there is a 1-to-1 mapping from the vector index
+to the index in the native array, but in some cases the
+mapping can be slightly more complex:
+A mutable vector may change its length, and this is implemented
+as a <a href="https://en.wikipedia.org/wiki/Gap_buffer">gap buffer</a>,
+so the index calculation must adjust for the unused elements in the gap.
+A slice (sub-vector) may share the underlying native array with another
+vector, so the index calculation must adjust for the start offset.</p>
+<p>
+Therefore we separate the index mapping logic
+(method <code>effectiveIndex</code>)
+from the code for accessing the native array (<code>getRaw</code>).
+Thus <code>(vector-ref vec i)</code> is implemented
+as <code>vec.get(i)</code>, which in turn is implemented as
+<code>vec.getRaw(vec.effectiveIndex(i))</code>.</p>
+<p>
+Mutating an element is similar:
+<code>(vector-set! vec i value)</code> is implemented
+as <code>vec.set(i, value)</code>, which in turn is implemented as
+<code>vec.setRaw(vec.effectiveIndex(i), value)</code>.
+In the following, for simplicity we'll mostly ignore mutation.</p>
+<p>
+The same logic is used for uniform vectors.
+An F32 vector (<code>F32Vector</code>) additionally has
+<code>getFloat</code> and <code>getFloatRaw</code> methods
+that return unboxed <code>float</code> values.
+The <code>vec.getFloat(i)</code> method is
+<code>vec.getFloatRaw(vec.effectiveIndex(i))</code>.
+If the compiler knows it is dealing with an F32 vector,
+it generates a call to <code>getFloat</code>, avoiding boxing.
+For simplicity we'll mostly ignore uniform vectors in the following,
+but non-vector arrays can be similarly optimized.</p>
+<p>
+All arrays (including vectors) implement the <code>Array</code> interface.
+The <code>get</code> method is generalized to take
+an array of indexes, but is still uses <code>effectiveIndex</code>,
+but generalized to take a vector of indexes (actually <code>int[]</code>,
+a native <code>int</code> array).
+Thus <code>arr.get(ivec)</code> is still
+<code>arr.getRaw(arr.effectiveIndex(ivec))</code>.</p>
+<p>
+With a few exceptions (such as the result of <code>build-array</code>)
+arrays that are not vectors are represented as
+transformations of other arrays, usually simple vectors,
+using the abstract class <code>TransformedArray</code>.
+In this case <code>getRaw</code> indirects to the base array:
+<code>arr.getRaw(effi)</code> is <code>arr.base.getRaw(effi)</code>,
+and therefore <code>arr.get(ivec)</code> is
+<code>arr.base.getRaw(arr.effectiveIndex(ivec))</code>.</p>
+<p>
+Both the <code>get</code> and <code>effectiveIndex</code> methods
+are overloaded to take 0, 1, 2, or <q>many</q> indexes.
+The is to avoid having to allocate an index array unnecessarily,
+but in the following we'll ignore this optimization.</p>
+<p>
+A <code>GeneralArray</code> is a <code>TransformedArray</code>
+that takes a <code>base</code> array along with an <code>offset</code>
+and a <code>stride</code> vector.
+The <code>effectiveIndex</code> multiples each index by the
+corresponding <code>stride</code>, adds the <code>offset</code>, and then
+uses the result to call <code>effectiveIndex</code> on the <code>base</code>.
+A simple non-vector array, as allocated by the <code>make-array</code>
+or the <code>array</code> procedures returns a <code>GeneralArray</code>,
+using as the <code>base</code> a simple vector containing the
+elements in row-major order.
+The <code>share-array</code> procedure returns a <code>GeneralArray</code>.
+The bounds and strides are calculated from the <var>shape</var>
+and <var>proc</var>.
+If the argument <var>array</var> is a <code>GeneralArray</code>,
+the latter's <code>base</code> is used as an optimization.
+</p>
+<p>
+The general case of <code>array-index-share</code> returns
+a <code>ComposedArray</code>, which is a <code>TransformedArray</code>
+that has a reference to the index arrays as well as the base array.
+See the <code>resolve</code> method in <code>ComposedArray.java</code>
+for the calculation used by <code>effectiveIndex</code>.
+If all of the indexes are <q>linear</q> (simple integers or integer ranges)
+then the result is optimized to a <code>GeneralArray</code>.</p>
+<p>The implementation of <code>array-index-ref</code> is basically
+doing <code>index-array-share</code> and then making a simple
+(<code>GeneralArray</code>) immutable copy of the result.
+However, there are some optimizations and special cases.
+To implement <code>index-array</code> we just
+wrap a <code>GeneralArray</code> around a simple range.</p>
+<p>
+The result of <code>array-transform</code> is a
+<code>ProcTransformedArray</code>, which is a <code>TransformedArray</code>
+that calls the supplied <var>transform</var> procedure
+in the <code>effectiveIndex</code> method.</p>
+<p>
+A <code>FlattenedArray</code> is used to implement
+<code>array-&gt;vector</code>.
+It is a <code>TransformedArray</code> whose <code>effectiveIndex</code>
+maps the argument index to the raw-major-order effective index
+of the <code>base</code> array.  If the argument array is a <q>simple</q>
+<code>GeneralArray</code> (that wraps a <code>SimpleVector</code>)
+it returns the latter's <code>base</code>, as an optimization.
+The <code>array-reshape</code> procedure first creates a
+<code>FlattenedArray</code> from the argument, and then
+wraps that in a <code>GeneralArray</code>.
+Implementing <code>array-flatten</code> is just creating a fresh
+mutable vector (possible a uniform vector) and then copying the
+elements in row-major order.</p>
+<p>
+The <code>BuiltArray</code> class (which does <em>not</em> extend
+<code>TransformedArray</code>) is used to implement <code>build-array</code>
+by having <code>get</code> call the <var>procedure</var> on each access.
+
+<h1>Copyright</h1>
+<p>
+Copyright &copy; Per Bothner 2019</p>
+<p>
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:</p>
+<p>
+The above copyright notice and this permission notice (including the
+next paragraph) shall be included in all copies or substantial
+portions of the Software.</p>
+<p>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</p>
+<hr>
+<address>Author: <a href="mailto:per@bothner.com">Per Bothner</a></address>
+<address>Editor: <a href="mailto:srfi-editors+at+srfi+dot+schemers+dot+org">Arthur A. Gleckler</a></address>

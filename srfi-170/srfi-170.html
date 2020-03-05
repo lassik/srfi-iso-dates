@@ -1,0 +1,1082 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>SRFI 170: POSIX API</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/srfi.css" type="text/css" />
+    <link href="/favicon.png" rel="icon" sizes="192x192" type="image/png" />
+  </head>
+
+  <body>
+
+<h1>Title</h1>
+
+POSIX API
+
+<h1>Authors</h1>
+
+Olin Shivers (original author), John Cowan (editor and shepherd), Harold Ancell (editor)
+
+<h1>Status</h1>
+
+<p>This SRFI is currently in <em>draft</em> status.  Here is <a
+    href="https://srfi.schemers.org/srfi-process.html">an
+    explanation</a> of each status that a SRFI can hold.  To provide
+    input on this SRFI, please send email to <code><a
+    href="mailto:srfi+minus+170+at+srfi+dotschemers+dot+org">srfi-170@<span
+    class="antispam">nospam</span>srfi.schemers.org</a></code>.  To
+    subscribe to the list, follow <a
+    href="https://srfi.schemers.org/srfi-list-subscribe.html">these
+    instructions</a>.  You can access previous messages via the
+    mailing list <a
+    href="https://srfi-email.schemers.org/srfi-170">archive</a>.</p>
+
+<ul>
+  <li>Received: 2019/5/4</li>
+  <li>60-day deadline: 2019/7/5</li>
+  <li>Draft #1 published: 2019/5/6</li>
+  <li>Draft #2 published: 2019/5/10</li>
+  <li>Draft #3 published: 2019/5/15</li>
+  <li>Draft #4 published: 2019/6/20</li>
+  <li>Draft #5 published: 2019/7/2</li>
+  <li>Draft #6 published: 2019/7/22</li>
+  <li>Draft #7 published: 2019/10/7</li>
+</ul>
+
+
+<h1>Abstract</h1>
+
+<p>
+The host environment is the set of resources, such as the filesystem,
+network and processes, that are managed by the operating system on top of
+which a Scheme program is executing. This SRFI specifies how the host
+environment can be accessed from within a Scheme program.  It does so by
+leveraging widespread support for P<small>OSIX</small>, the Portable
+Operating System Interface standardized by the IEEE.  Not all of the
+functions of this SRFI are available on all operating systems.
+</p>
+
+<h1>Issues</h1>
+
+<p>None at present.</p>
+
+<h1>Rationale</h1>
+
+<p>The I/O and other environmental procedures provided by the various
+Scheme standards were designed at a time when operating systems were far
+more diverse than they are today, and therefore portability was difficult
+or impossible to achieve.  In addition, Scheme has historically focused
+on programming-language features rather than the practical needs of
+mainstream software development.  Consequently, none of the standards
+provide more than a limited set of operations.  Individual implementations
+often provide much more, but in incompatible ways.</p>
+
+<p>This SRFI uses the IEEE 1003 P<small>OSIX</small>.1-2017 standard
+to provide maximally portable
+access to the services of the operating system on which typical Scheme
+implementations run.  Almost all operating systems today support all
+or part of P<small>OSIX</small>, so the use of this SRFI is mostly
+portable, but implementations are definitely not portable.  However,
+an implementation of this SRFI can be layered over many existing
+implementation-specific interfaces, or directly over a C FFI.  It is
+even possible to implement it on top of the JVM or CLR virtual
+machines.
+</p>
+
+<p>
+This SRFI describes a specific P<small>OSIX</small> API for Scheme.
+Rather than attempting to compromise between existing implementations,
+the scsh system call specification was chosen as a base document.
+Consequently, this SRFI is a reduced version of
+<a href="https://scsh.net/docu/html/man-Z-H-4.html#node_chap_3">Chapter 3, "System Calls"</a>
+of version 0.6.7 of the <i>Scsh Reference Manual</i>.
+The numbered headers are aligned with those used in the Reference Manual.
+</p>
+<p>Scsh 0.6.7 was chosen for two main reasons.  It is fairly old, so most of its operations,
+even those which were non-Posix at the time (2006) are now included in Posix, and it has
+few or no operations that aren't Posix at all.  In addition, it is politically fairly neutral,
+being tied to an obsolete version of Scheme 48, which is not being actively developed.
+Scsh 0.7 exists (see Implementation section), but was
+not used in creating this SRFI because it is incompletely documented.
+</p>
+<p>
+This SRFI makes no effort to provide all 81 headers, 1191 interfaces, and 51
+data types of full P<small>OSIX</small>.  Instead it provides access to a reasonable number of
+highly portable interfaces (many of them even available on Windows)
+with wrappers to make them more Scheme-like.
+In particular, this SRFI excludes:
+</p>
+<ul>
+<li><p>Most operations on ports and file descriptors
+  other than converting between them.  For such operations, see SRFI FIXME,
+  which is currently in pre-SRFI format at
+  <a href="https://bitbucket.org/cowan/r7rs-wg1-infra/src/default/FilesAdvancedCowan.md">
+    https://bitbucket.org/cowan/r7rs-wg1-infra/src/default/FilesAdvancedCowan.md</a>.
+</p></li><li><p>
+Everything to do with the creation and management of subprocesses and
+communication with them.  The low-level P<small>OSIX</small> operations
+are tricky to use, and a future SRFI will provide a higher-level interface.
+</p></li><li><p>
+Networking operations: see
+<a href="http://srfi.schemers.org/srfi-106/srfi-106.html">SRFI 106</a>.
+</p></li><li><p>
+Date and time operations, as the
+P<small>OSIX</small> date and time operations are irregular and awkward.
+This SRFI provides only the current time.
+</p></li><li><p>
+Access to command-line arguments and environment variables, as well
+as provisions for exiting a process, as they are already provided by R7RS.
+</p></li><li><p>
+P<small>OSIX</small> file locking, which is notoriously
+<a href="http://0pointer.de/blog/projects/locking.html">broken as designed</a>.
+Consider the use of dot files (or if necessary
+non-portable facilities) instead.
+</p></li><li><p>
+All provisions for signal handling, as they are complex and require deep
+integration with the particular Scheme implementation.
+</p></li><li><p>
+Memory-mapped I/O, locales, syslog, System V message
+queues, and pseudo-TTYs, as they are considered specialized and out of scope.
+Future SRFIs may provide interfaces for them.
+</p></li>
+</ul>
+<p>
+The use of colons to join record names and fields into the name of a
+record accessor is a convention of Scheme 48, on which scsh is built.
+</p>
+
+<h1>Specification</h1>
+
+<p>
+Implementations of this SRFI on non-P<small>OSIX</small> systems, especially Windows,
+must provide all the procedure names and syntax keywords.
+However, if the specified action is not possible, the procedure should
+either take no action and return some reasonable default value,
+or raise an exception.
+</p>
+<p>A Scheme implementation that supports both this SRFI and multiple
+threads of control must ensure that when a thread invokes a blocking I/O
+procedure defined below, only that thread is blocked and not any other
+concurrently running ones.
+Because Scheme threads may be multiplexed on top of P<small>OSIX</small>
+threads, the per-thread P<small>OSIX</small> functions may not do the
+right thing.
+</p>
+
+<h2><a href="#node_imp_node_sec_3.1">3.1&nbsp;&nbsp;[Intentionally omitted]</a></h2>
+<p>
+</p>
+<a name="node_sec_3.2"></a>
+<h2>3.2&nbsp;&nbsp;I/O</h2>
+<p></p>
+<p>Dealing with P<small>OSIX</small> file descriptors in a Scheme environment is difficult.
+In P<small>OSIX</small>, open files are part of the process environment, and are referenced
+by small exact integers called <i>file descriptors</i>. Open file descriptors are
+the fundamental way I/O redirections are passed to subprocesses and executed
+programs, since file descriptors are preserved across <code>fork</code> and
+<code>exec</code> operations.</p>
+<p>
+Scheme, on the other hand, uses ports for specifying I/O sources and sinks. 
+Ports are garbage-collected Scheme objects, not integers.
+When a port is garbage collected, it is effectively closed,
+but whether the underlying file descriptor is closed is left as an implementation detail.
+Because file
+descriptors are just integers, it's impossible to garbage collect them &mdash; you
+wouldn't be able to close file descriptor 3 unless there were no 3's in the
+system, and you could further prove that your program would never again
+compute a 3. This is difficult at best.</p>
+<p>
+If a Scheme program only used Scheme ports, and never actually used
+file descriptors, this would not be a problem. But Scheme code
+needs to descend to the file descriptor level in at least two circumstances:
+when interfacing to foreign code, and
+when interfacing to a subprocess.
+</p><p>
+This causes a problem. Suppose we have a Scheme port constructed
+on top of file descriptor 3. We intend to execute a successor program that
+will expect this file descriptor. If we drop references to the port,
+the garbage collector may prematurely close file 3 before we fork
+the subprocess.</p>
+<p>
+Unfortunately, there is no even vaguely portable solution to this problem.
+Scsh and Guile undertake heroic measures to
+open new file descriptors for ports when the old file descriptors are
+repurposed for something else, and to track when closing a port implies
+closing its file descriptor or not.
+But doing so involves more
+changes than an implementation should have to make in order
+to provide this SRFI.</p>
+
+<p>Consequently, this SRFI assumes that file descriptors will only
+be used at the edges of the program, and that most I/O operations will be
+performed on ports.</p>
+  
+<p>The following routines allow conversion between ports and file
+descriptors.</p>
+<div align="left"><code>(fdes->textual-input-port <i>fd</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>port</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<div align="left"><code>(fdes->binary-input-port <i>fd</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>port</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+
+<div align="left"><code>(fdes->textual-output-port <i>fd</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>port</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<div align="left"><code>(fdes->binary-output-port <i>fd</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>port</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<blockquote>
+<p>These procedures wrap a newly created port around the specified file descriptor,
+effectively importing it into the Scheme world.
+In particular, the textual ports use the same character encoding applied
+by default in the underlying implemenation.</p>
+</blockquote>
+
+<div align="left"><code>(port-fdes <i>port</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>exact integer</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+
+<blockquote>
+This procedure exposes the file descriptor of a port,
+effectively exporting it from the Scheme world.
+Alternatively, <code>#f</code> is returned if <i>port</i> does not have a
+file descriptor (a string port, e.g.).
+</blockquote><p>
+</p>
+<div align="left"><code>(close-fdes <i>fd</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>undefined</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>close()</code>&nbsp;</div>
+<p></p>
+<blockquote>
+<p>Closes the file descriptor <i>fd</i>.</p>
+<p>If <i>fd</i> is associated with a port, it is an error
+to do any further operations on that port.
+The same is true of calls to <code>close-port</code> on a file descriptor,
+if the implementation permits them.
+</p>
+</blockquote>
+
+<h2><a href="#node_toc_node_sec_3.3">3.3&nbsp;&nbsp;File system</a></h2>
+<p>The following procedures allow access to the
+computer's file system.
+<p>
+<div align="left"><code>(create-directory <i>fname [permission-bits [override?]]</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>undefined</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>mkdir()</code>&nbsp;</div>
+<div align="left"><code>(create-fifo <i>fname [permission-bits [override?]]</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>undefined</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>mkfifo()</code>&nbsp;</div>
+<div align="left"><code>(create-hard-link <i>old-fname new-fname [override?]</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>undefined</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>link()</code>&nbsp;</div>
+<div align="left"><code>(create-symlink <i>old-fname new-fname [override?]</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>undefined</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>symlink()</code>&nbsp;</div>
+
+<blockquote><p>
+These procedures create objects of various kinds in the file system.</p>
+<p>
+The <i>override?</i> argument controls the action if there is already an
+object in the file system with the new name.
+If it is <code>#f</code>, which is the default, then an
+error is signaled.  If it is <code>#t</code>,
+the old object is deleted with R7RS-small <code>delete-file</code>
+or this SRFI's <code>delete-directory</code> as appropriate before
+creating the new object.
+The effect of passing any other value is
+implementation-dependent.</p>
+</p><p>
+The <i>permission-bits</i> for <code>create-directory</code> default to <code>#o775</code>, and for <code>create-fifo</code> <code>#o664</code>, but are masked by the current umask.
+<p>
+</p><p>
+If you try to create a hard link
+and <i>old-fname</i> and <i>new-fname</i> refer to the same file, it is an error
+(and your file may be destroyed).
+</p></blockquote>
+</td></tr></tbody></table>
+<p></p>
+<div align=left><code>(read-symlink <i>fname</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>string</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>readlink()</code>&nbsp;</div>
+<blockquote>Return the filename referenced by the symlink <i>fname</i>.
+</blockquote>
+<div align=left><code>(rename-file <i>old-fname new-fname [override?]</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>undefined</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>rename()</code>&nbsp;</div>
+<blockquote>If you override an existing object, then <i>old-fname</i> 
+and <i>new-fname</i> must type-match -- either both directories, 
+or both non-directories. 
+This is required by the semantics of P<small>OSIX</small> <code>rename()</code>.<p>
+</p>
+<blockquote><i>Remark: </i> 
+There is an unfortunate atomicity problem with the <code>rename-file</code> 
+procedure: if you do not
+specify <i>override?</i>, but create file <code>new-fname</code> sometime between
+<code>rename-file</code>'s existence check and the actual rename operation,
+your file will be clobbered with <code>old-fname</code>. There is no way to 
+prevent this problem; at least it is highly unlikely to occur in practice.
+</blockquote><p>
+</blockquote><p>
+</p>
+<p></p>
+<div align="left"><code>(delete-directory <i>fname</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>undefined</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>rmdir()</code>&nbsp;</div>
+<blockquote>This procedure deletes directories from the file system.
+It is an error if <i>fname</i> is not a non-empty directory.
+</p>
+</blockquote><p>
+</p>
+<p></p>
+<div align="left"><code>(set-file-mode <i>fname mode-bits</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>undefined</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>chmod()</code>&nbsp;</div>
+<div align="left"><code>(set-file-owner <i>fname uid</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>undefined</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>chown()</code>&nbsp;</div>
+<div align="left"><code>(set-file-group <i>fname gid</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>undefined</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>chown()</code>&nbsp;</div>
+
+<blockquote>
+These procedures set the mode bits, owner id, and group id of a
+file, respectively, specified by supplying the file name.
+Setting file user ownership usually requires root privileges.
+These procedures follows symlinks and changes
+the files to which they refer.
+</blockquote><p>
+</p>
+<p></p>
+<p></p>
+<div align="left"><code>(set-file-timespecs <i>fname [access-timespec modify-timespec]</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>undefined</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>utimensat()</code>&nbsp;</div>
+
+<blockquote>
+This procedure sets the access and modified times for the file
+<i>fname</i> to the supplied SRFI 174 timespec values.
+If neither time argument is supplied, they are both taken to be
+the current time.
+The special values <code>timespec/now</code> and <code>timespec/omit</code>
+set their respective times to the current time, or do not change the time.
+It is an error if exactly one time is provided.
+This procedure
+follows symlinks and sets the times of the file to which it refers.
+If the procedure completes successfully, the file's time of last
+status-change (<code>ctime</code>) is set to the current time.
+</blockquote><p>
+</p>
+<p></p>
+<p></p>
+<p></p>
+<div align="left"><code>(truncate-file <i>fname/port len</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>undefined</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>truncate()</code>&nbsp;</div>
+<blockquote>The specified file is truncated to <i>len</i> bytes in length.
+</blockquote><p>
+</p>
+<p></p>
+<p></p>
+<p></p>
+<div align="left"><code>(file-info <i>fname/port follow?</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>file-info-record</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>stat()</code>&nbsp;</div>
+<blockquote>
+The <code>file-info</code> procedure
+returns a file-info record containing useful
+information about a file.
+If the <i>follow?</i> flag is true the procedure follows symlinks and
+reports on the files to which they refer.  If <i>follow?</i> is false
+the procedure checks the actual file itself, even if it's a symlink.
+The <i>follow?</i> flag is ignored if the file argument is a port.
+</blockquote>
+<div align="left"><code>(file-info? <i>obj</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>boolean</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<blockquote>Returns <code>#t</code> if <i>obj</i> is a file-info object and <code>#f</code> otherwise.
+</blockquote>
+
+<div align="left"><code>(file-info:device <i>file-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>integer</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<div align="left"><code>(file-info:inode <i>file-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>integer</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<div align="left"><code>(file-info:mode <i>file-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>integer</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<div align="left"><code>(file-info:nlinks <i>file-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>integer</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<div align="left"><code>(file-info:uid <i>file-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>integer</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<div align="left"><code>(file-info:gid <i>file-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>integer</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<div align="left"><code>(file-info:rdev <i>file-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>integer</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<div align="left"><code>(file-info:size <i>file-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>integer</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<div align="left"><code>(file-info:blksize <i>file-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>integer</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<div align="left"><code>(file-info:blocks <i>file-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>integer</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<div align="left"><code>(file-info:atime <i>file-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>timespec</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<div align="left"><code>(file-info:mtime <i>file-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>timespec</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<div align="left"><code>(file-info:ctime <i>file-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>timespec</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<blockquote>Returns the device number, inode number, mode (permission and file type bits),
+number of hard links, user id, group id, device ID if file is special,
+size in bytes, optimal blocksize for I/O, number of 512B blocks allocated,
+last access time, last modification time, and
+last change of status times in SRFI 174 timespecs stored in <i>file-info</i> respectively.
+</p><p>
+Although P<small>OSIX</small> does not standardize bit positions in the
+file mode, the following assignments are de facto standards
+(all except the socket, symlink, and fifo bits
+have been unchanged since the Sixth Edition of Research Unix):
+
+<pre>
+#o140000   local domain socket
+#o120000   symbolic link
+#o100000   regular file
+#o40000    directory
+#o10000    fifo
+#o4000     setuid file
+#o2000     setgid file
+#o1000     sticky directory (restrictions on deletion)
+#o400      user read permission
+#o200      user write permission
+#o100      user execute permission
+#o40       group read permission
+#o20       group write permission
+#o10       group execute permission
+#o4        other user read permission
+#o2        other user write permission
+#o1        other user execute permission
+</pre>
+
+<p>Note that to distinguish between non-directories it is necessary to
+examine several bits.</p>
+
+</blockquote>
+<p></p>
+<div align="left"><code>(file-info-directory? <i>file-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>boolean</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>S_ISDIR()</code>&nbsp;</div>
+<div align="left"><code>(file-info-fifo? <i>file-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>boolean</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>S_ISFIFO()</code>&nbsp;</div>
+<div align="left"><code>(file-info-symlink? <i>file-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>boolean</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>S_ISLNK()</code>&nbsp;</div>
+<div align="left"><code>(file-info-regular? <i>file-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>boolean</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>S_ISREG()</code>&nbsp;</div>
+
+<blockquote>
+These procedures are file-type predicates that test the
+file type stored in <i>file-info</i>.
+<p>
+This SRFI does not provide a special means for checking the
+permission bits in a <code>file-info</code> record,
+though they are available in <code>file-info:mode</code>.
+There are several problems with such procedures.
+First, there's an
+atomicity issue. In between checking permissions for a file and then trying
+an operation on the file, another process could change the permissions,
+so a return value from these functions guarantees nothing. Second,
+Posix special-cases permission checking when the uid is 0 (<code>root</code>)
+&mdash; if the file exists, root is assumed to have the requested permission.
+However, not even root can write a file stored on a read-only file system,
+such as a CD-ROM.</p>
+</blockquote>
+<p></p>
+<p></p>
+<div align="left"><code>(directory-files <i>[dir [dotfiles?]]</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>string list</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+
+<blockquote>
+Return a list of file names in directory <i>dir</i>,
+which defaults to the current working directory.
+The <i>dotfiles?</i> flag (default <code>#f</code>) causes dot files to be
+included in the list.
+Regardless of the value of <i>dotfiles?</i>, the two files <code>.</code> and
+<code>..</code> are <i>never</i> returned.<p>
+The directory <i>dir</i> is not prepended to each file name in the
+result list. That is,
+</p>
+<blockquote><code>(directory-files "/etc")</code></blockquote>returns
+<blockquote><code>("chown" "exports" "fstab" <code>...</code>)</code></blockquote><i>not</i>
+<blockquote><code>("/etc/chown" "/etc/exports" "/etc/fstab" <code>...</code>)</code></blockquote>To use the file names in the returned list, the programmer can either manually
+prepend the directory,
+or change to the directory before using the file names.
+</p>
+</blockquote>
+
+<div align="left"><code>(make-directory-files-generator <i>dir [dotfiles?]</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>generator</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+
+<blockquote>
+Return a SRFI 158 generator of the file names in directory <i>dir</i>.
+The <i>dotfiles?</i> flag (default <code>#f</code>) causes dot files to be
+included in the list.
+Regardless of the value of <i>dotfiles?</i>, the two files <code>.</code> and
+<code>..</code> are <i>never</i> returned.
+<p>Like <code>directory-files</code> above, the directory <i>dir</i>
+is not prepended to each file name in the results the generator returns.</p>
+<p>The generator approach is particularly useful when the number of
+items in a directory might be &quot;huge&quot;, which has been a
+common paradigm when using a file system as a document database.</p>
+</blockquote>
+
+<div align="left"><code>(open-directory <i>dir [dot-files?]</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>directory-object</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>opendir()</code>&nbsp;</div>
+<div align="left"><code>(read-directory <i>directory-object</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>string or eof-object</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>readdir()</code>&nbsp;</div>
+<div align="left"><code>(close-directory <i>directory-object</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>undefined</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>closedir()</code>&nbsp;</div>
+<p>
+These functions implement an interface to the
+<code>opendir()</code>/
+<code>readdir()</code>/
+<code>closedir()</code>
+family of functions for processing directories.
+</p><p>
+The <code>open-directory</code> procedure opens the
+directory with the specified pathname for reading, returning an opaque directory object.
+Then <code>read-directory</code>
+returns the name of the next available file,
+or the end of file object if there are no more files.
+The <code><i>dot-files?</i></code> argument controls whether file names beginning with &quot;<code>.</code>&quot; are returned.
+If it is <code>#f</code>, which is the default, they are not.  The file names <code>.</code> and <code>..</code> are <i>never</i> returned.
+Finally, <code>close-directory</code> closes a directory object.</p>
+
+<div align="left"><code>(real-path <i>path</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>string</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>realpath()</code>&nbsp;</div>
+
+<blockquote>
+Returns an absolute pathname
+derived from <i>pathname</i> that names the same file
+and whose resolution does not involve <code>.</code>, <code>..</code>, or symlinks.
+</blockquote>
+
+<div align="left"><code>temp-file-prefix</code> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<i>string parameter</i>&nbsp;</div>
+<p></p>
+<blockquote>
+A SRFI 39 or R7RS parameter that returns a string when invoked.  Its initial value is
+the value of the environment variable <code>TMPDIR</code> concatenated with <code>"/<i>pid</i>"</code>
+if <code>TMPDIR</code> is set and to
+<code>"/tmp/<i>pid</i>"</code> otherwise, where <i>pid</i> is the id of the current process.
+</blockquote>
+<div align="left"><code>(create-temp-file <i>[prefix]</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>string</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<blockquote>Creates a new temporary file and returns its name.
+The optional argument specifies the filename prefix to use, and defaults
+to the result of invoking <code>temp-file-prefix</code>.
+The procedure generates a sequence of filenames that have <i>prefix</i> as
+a common prefix, looking for a filename that doesn't already exist in the
+file system. When it finds one, it creates it with permission <code>#o600</code>
+and returns the filename. (The file permission can be changed to a more
+permissive permission with <code>set-file-mode</code> after being created).<p>
+This file is guaranteed to be brand new. No other process will have it
+open. This procedure does not simply return a filename that is very
+likely to be unused. It returns a filename that definitely did not exist
+at the moment <code>create-temp-file</code> created it.</p>
+<p>
+It is not necessary for the process's pid to be a part of the filename
+for the uniqueness guarantees to hold. The pid component of the default
+prefix simply serves to scatter the name searches into sparse regions, so
+that collisions are less likely to occur. This speeds things up, but does
+not affect correctness.</p>
+</blockquote><p>
+</p>
+<div align="left"><code>(call-with-temporary-filename <i>maker [prefix]</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>object</i><sup>+</sup></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+
+<blockquote>
+This procedure can be used to perform certain atomic transactions on
+the file system involving filenames. Some examples:
+<ul>
+<li>Linking a file to a fresh backup temp name.
+</li><li>Creating and opening an unused, secure temp file.
+</li><li>Creating an unused temporary directory.
+</li></ul><p></p>
+<p>
+This procedure uses <i>prefix</i> to generate a series of trial
+file names.  <i>Prefix</i> is a string, and
+defaults to the value of invoking <code>temp-file-prefix</code>.
+File names are generated by
+concatenating <i>prefix</i>
+with a varying string.<p>
+The <i>maker</i> procedure is called serially on each file name
+generated.  It must return at least one value; it may return multiple
+values. If the first return value is <code>#f</code> or if <i>maker</i> raises an
+exception indicating that the file exists
+<code>call-with-temporary-filename</code> will loop,
+generating a new file name and calling <i>maker</i> again. If the first
+return value is true, the loop is terminated, returning whatever value(s)
+<i>maker</i> returned.</p>
+<p>
+After a number of unsuccessful trials, <code>call-with-temporary-filename</code> may give up
+and signal an error.</p>
+<p>
+To rename a file to a temporary name:
+</p>
+<blockquote><code><br>
+(call-with-temporary-filename&nbsp;(lambda&nbsp;(backup)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(create-hard-link&nbsp;old-file&nbsp;backup)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;backup)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;".temp.")&nbsp;;&nbsp;Keep&nbsp;link&nbsp;in&nbsp;current working directory.<br>
+(delete-file&nbsp;old-file)</code></blockquote>
+Recall that this SRFI reports procedure failure by raising an error
+exception, not by returning an error code. This is critical for
+this example &mdash; the programmer can assume that if the
+<code>call-with-temporary-filename</code> call returns, it returns successfully.
+So the following <code>delete-file</code> call can be reliably invoked,
+safe in the knowledge that the backup link has definitely been established.<p>
+To create a unique temporary directory:
+</p>
+<blockquote><code><br>
+(call-with-temporary-filename&nbsp;(lambda&nbsp;(dir)&nbsp;(create-directory&nbsp;dir)&nbsp;dir)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"/tmp/tempdir.")</code></blockquote>
+Similar operations can be used to generate unique fifos,
+or to return values other than the new filename (<i>e.g.</i>, an open port).</p>
+</p>
+</blockquote><p>
+</p>
+<p></p>
+<p></p>
+<div align="left"><code>(real-path <i>path</i>)</code> &nbsp;&nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;&nbsp;<i>string</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+
+<blockquote>
+Returns an absolute pathname
+derived from <i>pathname</i> that names the same file
+and whose resolution does not involve <code>.</code>, <code>..</code>, or symbolic links.
+</blockquote>
+</blockquote>
+
+<a name="node_sec_3.4"></a>
+<h2><a href="#node_toc_node_sec_3.4">3.4&nbsp;&nbsp;[Intentionally omitted]</a></h2>
+
+<p></p>
+<a name="node_sec_3.5"></a>
+<h2>3.5&nbsp;&nbsp;Process state</h2>
+<p></p>
+<p></p>
+<p></p>
+<div align="left"><code>(umask<i></i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>exact integer</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;P<small>OSIX</small> umask()&nbsp;</div>
+<div align="left"><code>(set-umask <i>perms</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>exact integer</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;P<small>OSIX</small> umask()&nbsp;</div>
+<blockquote>
+The process's current umask is retrieved with <code>umask</code>, and set with
+<code>(set-umask <i>perms</i>)</code>, <i>e.g.</i>, (set-umask #o2), which returns the previous umask.
+</blockquote><p>
+</p>
+<p></p>
+<p></p>
+<div align="left"><code>(working-directory<i></i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>string</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>getcwd()</code>&nbsp;</div>
+<div align="left"><code>(set-working-directory <i>[fname]</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>undefined</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>chdir()</code>&nbsp;</div>
+<blockquote>
+Get and set the current working directory.
+If <code>set-working-directory</code> is called with no arguments, it changes the current working directory to
+the user's home directory.
+</blockquote><p>
+</p>
+<p></p>
+<p></p>
+<div align="left"><code>(pid<i></i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>exact integer</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>getpid()</code>&nbsp;</div>
+<div align="left"><code>(parent-pid<i></i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>exact integer</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>getppid()</code>&nbsp;</div>
+<div align="left"><code>(process-group<i></i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>exact integer</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>getpgid()</code>&nbsp;</div>
+<blockquote>
+These procedures retrieve the process id for the current process,
+the process id for the parent of this process, and the process group
+for this process, respectively.
+</blockquote>
+
+<div align=left><code>(nice <i>[delta]</i>)</code> &nbsp;&nbsp;&nbsp;&nbsp;---&gt; &nbsp;&nbsp;&nbsp;<i><i>exact integer</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>nice()</code>&nbsp;</div>
+<blockquote><p>
+Increments the niceness of the current process by <i>delta</i>.
+The lower the <i>niceness</i> value is, the more the process is favored during scheduling.
+If <code><i>delta</i></code> is not specified, the increment is 1.
+</p>
+<p>Real-time processes are not affected by <code>nice</code>.</p>
+</blockquote><p>
+</p>
+<div align="left"><code>(user-uid<i></i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>exact integer</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>getuid()</code>&nbsp;</div>
+<div align="left"><code>(user-gid<i></i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>exact integer</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>getgid()</code>&nbsp;</div>
+<div align="left"><code>(user-effective-uid<i></i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>exact integer</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>geteuid()</code>&nbsp;</div>
+<div align="left"><code>(user-effective-gid<i></i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>exact integer</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>getegid()</code>&nbsp;</div>
+<div align="left"><code>(user-supplementary-gids<i></i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>exact integer</i> list</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>getgroups()</code>&nbsp;</div>
+
+<blockquote>
+For the calling process, these routines get the specified data.  The scsh proceedure <code>user-login-name</code> that uses <code>getlogin()</code> or <code>getlogin_r()</code> can be simulated with <code>(user-info:name (user-info (user-uid)))</code>, the outer procedures are described in the next section:
+</blockquote><p>
+</p>
+
+<a name="node_sec_3.6"></a>
+<h2>3.6&nbsp;&nbsp;User and group database access</h2>
+<p>These procedures are used to access the user and group databases
+(<i>e.g.</i>, the ones traditionally stored in <code>/etc/passwd</code> and <code>/etc/group</code>).</p>
+<p>
+</p>
+<p></p>
+<p></p>
+<div align="left"><code>(user-info <i>uid/name</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>record</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>getpwuid/getpwnam()</code>&nbsp;</div>
+
+<blockquote>
+Return a <code>user-info</code> record giving the recorded information for a
+particular user.
+The <i>uid/name</i> argument is either an exact integer uid or a string user name.
+</blockquote><p>
+</p>
+<p></p>
+<div align="left"><code>(user-info? <i>obj</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>boolean</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<blockquote>Returns <code>#t</code> if <i>obj</i> is a user info object and <code>#f</code> otherwise.
+</blockquote>
+<div align="left"><code>(user-info:name <i>user-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>string</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<div align="left"><code>(user-info:uid <i>user-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>exact integer</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<div align="left"><code>(user-info:gid <i>user-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>exact integer</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<div align="left"><code>(user-info:home-dir <i>user-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>string</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<div align="left"><code>(user-info:shell <i>user-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>string</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<blockquote>Returns the user name, user id, group id, home directory,
+and shell path stored in <i>user-info</i> respectively.
+Windows returns <code>#f</code> for any items it doesn't have.</blockquote>
+<p></p>
+</p>
+<p></p>
+<div align="left"><code>(user-info:full-name <i>user-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>string</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<blockquote>Returns the contents of the <code>pw_gecos</code> field
+stored in <i>user-info</i>.
+Although this field is not part of P<small>OSIX</small>,
+it has been part of all Unix variants since at least
+the Sixth Edition of Research Unix.
+It normally contains the user's full name, but may contain additional
+system-specific information;
+on Windows, it contains exactly the full name.</blockquote>
+<p></p>
+</p>
+<p></p>
+<div align="left"><code>(user-info:parsed-full-name <i>user-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>string list</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<blockquote><p>Returns a parsed and expanded version of the raw string
+returned by <code>user-info:full-name</code>.
+The raw value is split on commas, creating a list of strings to be
+returned.  All ampersands in the first element of the list are
+replaced by <code>user-info:name</code>, which is capitalized if it
+starts with an ASCII lowercase letter.</p>
+<p>However, on Windows the implementation is completely different:
+<code>user-info:parsed-full-name</code>
+returns a list with a single element, the result of
+<code>user-info:full-name</code>.  No comma splitting or
+ampersand substitution is performed.</p>
+<p>The meaning of the first element of the returned list is the
+user's full name on all known systems.  The remaining elements
+have varying meaning.  For example, on BSD systems, the second through fourth elements
+are the user's work location, the user's work phone number, and the
+user's home phone number, respectively.
+On Cygwin, the second element is the Windows SID corresponding
+to this user; further elements depend on
+<a href="https://cygwin.com/cygwin-ug-net/ntsec.html#ntsec-mapping-nsswitch-gecos">Cygwin-specific</a>
+entries in the <code>/etc/nsswitch.conf</code> file.</p>
+</blockquote>
+
+<div align="left"><code>(group-info <i>gid/name</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>record</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>getgrgid/getgrnam()</code>&nbsp;</div>
+
+<blockquote>
+Return a <code>group-info</code> record giving the recorded information for a
+particular group.
+The <i>gid/name</i> argument is either an exact integer gid or a string group name.
+</blockquote>
+
+<div align="left"><code>(group-info? <i>obj</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>boolean</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<blockquote>Returns <code>#t</code> if <i>obj</i> is a group info object and <code>#f</code> otherwise.
+</blockquote>
+<div align="left"><code>(group-info:name <i>user-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>string</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<div align="left"><code>(group-info:gid <i>user-info</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i>exact integer</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;</div>
+<blockquote>Returns the group name and group id stored in <i>group-info</i>.  The list of group member ids can be retrieved with the above <code>(user-supplementary-gids)</code></blockquote>
+</p>
+
+<a name="node_sec_3.7"></a>
+<h2><a href="#node_toc_node_sec_3.7">3.7&nbsp;&nbsp;[Intentionally omitted]</a></h2>
+<h2>3.7&nbsp;&nbsp;[Intentionally omitted]</h2>
+
+<a name="node_sec_3.8"></a>
+<h2><a href="#node_toc_node_sec_3.8">3.8&nbsp;&nbsp;[Intentionally omitted]</a></h2>
+
+<a name="node_sec_3.9"></a>
+<h2><a href="#node_toc_node_sec_3.9">3.9&nbsp;&nbsp;[Intentionally omitted]</a></h2>
+
+<a name="node_sec_3.10"></a>
+<h2>3.10&nbsp;&nbsp;Time</h2>
+<p>
+A <a href="http://srfi.schemers.org/srfi-174/srfi-174.html">SRFI 174</a>
+timespec is an object containing two values, the number of elapsed seconds
+since a P<small>OSIX</small> epoch, and the number of
+elapsed nanoseconds since the beginning of the current second.
+The system clock is not required to report time at full nanosecond
+resolution, nor is anything guaranteed about accuracy.
+</p>
+
+<div align=left><code>(posix-time)</code> &nbsp;&nbsp;&nbsp;&nbsp;---> &nbsp;&nbsp;&nbsp;<i>timespec</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>clock_gettime()</code>&nbsp;</div>
+
+<blockquote>
+<p>The <code>posix-time</code> procedure returns the current time as a
+<i>timespec</i> since the P<small>OSIX</small> epoch (midnight January
+1, 1970 Universal Time), excluding leap seconds.
+</blockquote>
+</blockquote><p>
+</p>
+<div align=left><code>(monotonic-time)</code> &nbsp;&nbsp;&nbsp;&nbsp;---> &nbsp;&nbsp;&nbsp;<i>timespec</i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>clock_gettime()</code>&nbsp;</div>
+
+<blockquote>
+<p>The same as <code>posix-time</code>, except that the epoch is arbitrary.
+This epoch cannot change after the current
+program begins to run.
+It is guaranteed that a call to <code>monotonic-time</code>
+cannot return a time earlier than a previous call to <i>monotonic-time</i>.
+This is not guaranteed for <code>posix-time</code>
+because the system's P<small>OSIX</small> clock
+is sometimes turned either forward or backward.
+</p>
+</blockquote>
+
+<h2><a href="#node_toc_node_sec_3.11">3.11&nbsp;&nbsp;[Intentionally omitted]</a></h2>
+
+<a name="node_sec_3.12"></a>
+<h2>3.12&nbsp;&nbsp;Terminal device control</h2>
+<p></p>
+<p>
+</p>
+<p>
+P<small>OSIX</small> provides a complete set of routines for manipulating terminal
+devices &mdash; putting them in "raw" mode, changing and querying their
+special characters, modifying their I/O speeds, and so forth.
+However, now that terminal emulators have almost completely displaced
+terminals, very little of this is useful except for directly
+controlling serial-line hardware, which itself is increasingly rare.
+Therefore, this SRFI provides only the functions that are still
+in common use by command-line programs.
+</p>
+
+<div align="left"><code>(terminal? <i>port</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>boolean</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>isatty()</code>&nbsp;</div>
+<blockquote>
+Return true if the argument is a terminal.
+Raises an error if <code><i>port</i></code> is not a port,
+or if the underlying call to <code>isatty()</code> returns an error
+other than <code>ENOTTY</code>.
+</blockquote><p>
+</p>
+
+<div align="left"><code>(terminal-file-name <i>port</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>string</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>ttyname()</code>&nbsp;</div>
+<blockquote>
+The argument <i>port</i> must be open on a terminal.
+Return the file name of the terminal.
+</blockquote><p>
+</p>
+
+<p>
+The following procedures use <code>dynamic-wind</code> when executing
+their <code><i>proc</i></code> procedure argument; if <i><code>proc</code>'s</i> dynamic extent
+is escaped, the terminal mode changes of the containing <code>with-</code>or
+<code>without-</code> procedure are undone, but if <i><code>proc</code>'s</i> dynamic extent is
+re-entered, the terminal mode changes of the containing procedure are re-enabled.
+They all use P<small>OSIX</small> <code>tcgetattr()</code> and
+<code>tcsetattr()</code>, see also the <code>stty</code> command.
+</p>
+
+<p>The general paradigm for using the following procedures is to set up
+your application, then run it in the <code><i>proc</i></code> provided to
+them, a procedure that takes the same port arguments in the same order
+as the containing <code>with-</code> or <code>without-</code> procedure.
+The <code>without-echo</code> procedure is an exception in that it's generally used
+to enter a password or passphrase.  The procedures return the values
+that <code><i>proc</i></code> returns.</p>
+
+<div align="left"><code>(with-raw-mode <i>input-port output-port min time proc</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>[values]</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>stty -ECHO -ICANON -IEXTEN -ISIG -BRKINT -ICRNL -INPCK -ISTRIP -IXON -CSIZE -PARENB CS8 -OPOST VMIN=<i>min</i> VTIME=<i>time</i></code>&nbsp;</div>
+<blockquote>
+The port arguments must be opened on a terminal.
+The terminal is set to raw mode during the dynamic execution of <code>proc</code>
+and then is restored to canonical "cooked" mode.  The effect of the
+  <i>min</i> and <i>time</i> arguments is that any reads done on the terminal
+  while raw mode is in effect will return to the caller after <i>min</i>
+  bytes have been read or <i>time</i> deciseconds (1/10ths of a second)
+  have elapsed, whichever comes first.
+Therefore, it makes no sense to use any read operation on the terminal
+except <code>read-char</code> or <code>read-string</code>,
+which read a fixed number of characters.
+No character is given special handling; all are passed to the
+application exactly as received.
+Echoing of input is disabled on the terminal during the execution of <code>proc</code>
+and then is re-enabled.
+</blockquote><p>
+</p>
+
+<div align="left"><code>(with-rare-mode <i>input-port output-port proc</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>[values]</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>stty -ICANON -ECHO VMIN=1 VTIME=0</code>&nbsp;</div>
+<blockquote>
+The port arguments must be opened on a terminal.
+The terminal is set to "rare", also known as cbreak mode during the dynamic
+execution of <code>proc</code>, and then is restored to canonical "cooked" mode.
+Just as in canonical mode, any read operation on the terminal
+will wait until characters are received, unlike raw mode.
+However, no characters are given special interpretation except
+the characters that send signals (by default, Ctrl-C and Ctrl-\).
+Echoing of input is disabled on the terminal during the execution of <code>proc</code>
+and then is re-enabled.
+</blockquote><p>
+</p>
+
+</p>
+
+<div align="left"><code>(without-echo <i>input-port output-port proc</i>)</code> &nbsp;&nbsp;&nbsp;&rarr; &nbsp;&nbsp;&nbsp;<i><i>[values]</i></i> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(procedure)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; P<small>OSIX</small> <code>stty -ECHO -ECHOE -ECHOK -ECHONL</code>&nbsp;</div>
+<blockquote>
+The port arguments must be opened on a terminal.
+Echoing of input is disabled on the terminal during the execution of <code>proc</code>
+and then is re-enabled.
+</blockquote><p>
+</p>
+
+<h1>Implementation</h1>
+
+There are two implementations of this SRFI, <a href="https://scsh.net/">Scsh</a> version 0.7,
+<a href="https://github.com/scheme/scsh">which can be found at GitHub in the scsh repository of scheme</a>,
+and a Chibi Scheme <code>(srfi 170)</code> library (see build notes scsh
+<a href="https://github.com/scheme-requests-for-implementation/srfi-170">here</a>,
+and the Chibi Scheme example implementation in its srfi subdirectory).
+They have the following exceptions and deviations, in which
+Bionic Beaver refers to x86-64 Ubuntu 18.04 Linux kernel 4.15.0, gcc v7.4.1,
+OpenBSD refers to x86-64 OpenBSD 6.5, clang v7.0.1.
+
+<h3><a href="#node_imp_node_sec_3.1">3.1&nbsp;&nbsp;[Intentionally omitted]</a></h3>
+<h3><a href="#node_imp_node_sec_3.2">3.2&nbsp;&nbsp;I/O</a></h3>
+<ul>
+<li><p>
+Scsh does not distinguish between textual and binary ports,
+so there are only two procedures to convert file descriptors to ports,
+<code>fdes->inport</code> in place of <code>fdes->textual-inport-port</code>
+and <code>fdes->binary-input-port</code>, and
+<code>fdes->outport</code> in place of <code>fdes->textual-output-port</code>
+and <code>fdes->binary-output-port</code>.
+</p></li>
+<li><p>The <code>port-fdes</code> procedure is called <code>port->fdes</code> in scsh.
+The name was changed because the use of the arrow suggests a conversion of the
+port to a file descriptor, which is not the case.
+</p></li>
+<li><p>There is no <code>close-fdes</code> procedure in scsh, as the standard <code>close-port</code>
+procedure suffices.
+</p></li>
+</ul>
+
+<h3>3.3&nbsp;&nbsp;File system</h3>
+<ul>
+<li><p>
+The <code>create-directory</code>, <code>create-fifo</code>,
+and <code>set-file-mode</code> procedures were changed in scsh 0.7 to take
+a file-mode record instead of traditional permission bits.  A work-around
+is to manually set the mode of a file, and use
+<code>file-info</code> and <code>file-info:mode</code> to get a record
+with the desired permission bits.
+</p></li>
+<li><p>
+Attempting scsh's <code>create-directory</code> with <code><i>override?</i></code> as
+<code>#t</code> when the target <code><i>fname</i></code> is a directory with
+contents causes a stack consuming infinite loop.
+</p></li>
+<li><p>
+When scsh <code>create-hard-link</code> is asked to make a link across file systems,
+rather than erroring it creates a copy of the file at <i>newname</i>.
+</p></li>
+<li><p>
+<code>set-file-timespecs</code> is <code>set-file-times</code> in scsh,
+and <code>access-timespec</code> and <code>mod-timespec</code> are rational numbers,
+which are cooerced to exact integers, and treated as the number of elapsed seconds
+since the POSIX epoch of midnight January 1, 1970.
+</p></li>
+<li><p>
+The <code><i>follow?</i></code> flag for scsh's <code>file-info</code> is optional.
+The scsh <code>file-info mode</code> record field is masked to only return the last three permission bits
+bytes, omitting the top byte for <code>set-user-ID</code>, <code>set-group-ID</code>, and the save text
+or "sticky" bit.
+The scsh <code>file-info</code> record fields <code>atime</code>, <code>mtime</code>, and <code>ctime</code>
+fields are exact integers instead of <code><i>timespecs</i></code>, and are the number of elapsed seconds
+since the POSIX epoch of midnight January 1, 1970.
+It does not implement the <code>rdev</code>, <code>blksize</code>, and <code>blocks</code> fields.
+</p></li>
+<li><p>
+Scsh does not have <code>make-directory-files-generator</code>, but is easy to implement with
+<code>open-directory</code>, <code>read-directory</code>, and <code>close-directory</code>.
+</p></li>
+<li><p>
+The scsh <code>open-directory</code>, <code>read-directory</code>, and <code>close-directory</code>
+procedures are called <code>open-directory-stream</code> etc.  The <code>read-directory-stream</code>
+functions returns <code>#f</code> at the end of the directory instead of
+an end of file object.
+</p></li>
+<li><p>
+Scsh does not support the <code>real-path</code> procedure.
+</p></li>
+<li><p>
+Scsh does not support parameters, so <code>temp-file-prefix</code> does not exist.
+Instead, there is a fluid variable named <code>*temp-file-template*</code> whose
+value is as defined in this SRFI with <code>/var</code> added in front of <code>/tmp</code>,
+and <code>"~a"</code> appended to it, <i>e.g.</i>, <code>/var/tmp/6812~a</code>.
+</p></li>
+<li><p>
+In scsh <code>call-with-temporary-filename</code> is implemented with
+<code>temp-file-iterate</code> with the following difference:
+The scsh fluid variable <code>*temp-file-template*</code> described above
+includes the substring "<code>~a</code>", which is required in the optional
+<code><i>prefix</i></code> argument to <code>temp-file-iterate</code> (the
+varying strings it iterates through are inserted there with <code>format</code>,
+instead of being concatenated with <code><i>prefix</i></code> as in
+<code>call-with-temporary-filename</code>).
+If trying the &quot;To rename a file to a temporary name&quot; example,
+beware of the cross file system <code>create-hard-link</code> bug
+mentioned above.
+</p></li>
+<li><p>
+The Chibi Scheme implementation of <code>call-with-temporary-filename</code> is
+neither finished or exported.
+</li></p>
+</ul>
+
+<h3><a href="#node_imp_node_sec_3.4">3.4&nbsp;&nbsp;[Intentionally omitted]</a></h3>
+
+<h3>3.5&nbsp;&nbsp;Process state</h3>
+<ul>
+<li><p>
+Scsh <code>umask</code> and <code>set-umask</code> use the file-mode record described above, and <code>set-umask</code> does not return the previous umask.
+</p></li>
+<li><p>
+Scsh specifies but does not implement <code>nice</code>.
+</p></li>
+</ul>
+
+<h3><a href="#node_imp_node_sec_3.6">3.6&nbsp;&nbsp;User and group database access</a></h3>
+<ul>
+</ul>
+
+<h3>3.7&nbsp;&nbsp;[Intentionally omitted]</h3>
+
+<h3><a href="#node_imp_node_sec_3.8">3.8&nbsp;&nbsp;[Intentionally omitted]</a></h3>
+
+<h3><a href="#node_imp_node_sec_3.9">3.9&nbsp;&nbsp;[Intentionally omitted]</a></h3>
+
+<h3>3.10&nbsp;&nbsp;Time</h3>
+<ul>
+<li><p>
+  Scsh does not provide <code>posix-time</code>, but it is easily defined using the procedures
+  <code>time+ticks</code> and <code>ticks/sec</code>.  The first returns two values, the Posix
+  second and the subsecond time in ticks; the second procedure specifies how many ticks
+  a second contains.  These are easily converted to seconds and nanoseconds.
+</p></li>
+</ul>
+
+<h3><a href="#node_imp_node_sec_3.11">3.11&nbsp;&nbsp;[Intentionally omitted]</a></h3>
+
+<h3>3.12&nbsp;&nbsp;Terminal device control</h3>
+<ul>
+<li><p>
+  Scsh provides a complete set of <code>termios.h</code> operations, from which the
+  <code>with-raw-mode</code>, <code>with-rare-mode</code>, and <code>without-echo</code>
+  procedures can be implemented along the lines specified by the definitions.
+  For <code>with-raw-mode</code>, it's important to preserve and restore the
+  <code>eof</code> and <code>eol</code> control characters, as these may occupy the same
+  memory locations in cooked mode as the <code>min</code> and <code>time</code> settings in raw mode.
+</p></li>
+</ul>
+
+
+<h1>Acknowledgements</h1>
+
+Thanks to Olin Shivers, <i>sine quo non</i>, and all the Scheme implementors
+who have followed his work.  Thanks also to all the participants in the
+SRFI mailing list.
+
+<h1>Copyright</h1>
+Copyright &copy; 2019 by John Cowan.
+
+<p>
+  Permission is hereby granted, free of charge, to any person
+  obtaining a copy of this software and associated documentation files
+  (the "Software"), to deal in the Software without restriction,
+  including without limitation the rights to use, copy, modify, merge,
+  publish, distribute, sublicense, and/or sell copies of the Software,
+  and to permit persons to whom the Software is furnished to do so,
+  subject to the following conditions:
+
+<p>
+  The above copyright notice and this permission notice shall be
+  included in all copies or substantial portions of the Software.
+
+<p>
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+  NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+  BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+  ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+<p>This SRFI is derived from the documentation for
+  <a href="https://scsh.net/">scsh</a>, whose copyright notice, from
+  the <code>COPYING</code> file, is reprinted here:</p>
+
+<blockquote>
+  <p>Copyright (c) 1993-2003 Richard Kelsey and Jonathan Rees</p>
+  <p>Copyright (c) 1994-2003 by Olin Shivers and Brian D. Carlstrom.</p>
+  <p>Copyright (c) 1999-2003 by Martin Gasbichler.</p>
+  <p>Copyright (c) 2001-2003 by Michael Sperber.</p>
+  <p>All rights reserved.</p>
+  <p>Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions
+  are met:</p>
+  <ol><li>Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.</li>
+  <li>Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.</li>
+  <li>The name of the authors may not be used to endorse or promote products
+     derived from this software without specific prior written permission.</li>
+  </ol>
+  <p>THIS SOFTWARE IS PROVIDED BY THE AUTHORS ``AS IS'' AND ANY EXPRESS OR
+  IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+  OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+  IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+  NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.</p></blockquote>
+
+  <hr>
+  <address>Editor: <a href="mailto:srfi-editors+at+srfi+dot+schemers+dot+org">Arthur A. Gleckler</a></address></body></html>

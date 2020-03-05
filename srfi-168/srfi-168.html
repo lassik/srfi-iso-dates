@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>SRFI 168: Generic Tuple Store Database</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/srfi.css" type="text/css" />
+    <link href="/favicon.png" rel="icon" sizes="192x192" type="image/png" />
+  </head>
+  <body>
+
+    <h1>Title</h1>
+
+    <p>SRFI 168: Generic Tuple Store Database</p>
+
+    <h1>Author</h1>
+
+    <p>Amirouche Boubekki</p>
+
+    <h1>Status</h1>
+
+    <p>This SRFI is currently in <em>final</em> status.  Here is
+      <a href="https://srfi.schemers.org/srfi-process.html">an
+	explanation</a> of each status that a SRFI can hold.  To provide
+      input on this SRFI, please send email to
+      <code><a href="mailto:srfi+minus+168+at+srfi+dotschemers+dot+org">srfi-168@<span class="antispam">nospam</span>srfi.schemers.org</a></code>.
+      To subscribe to the list, follow
+      <a href="https://srfi.schemers.org/srfi-list-subscribe.html">these
+	instructions</a>.  You can access previous messages via the
+      mailing list <a href="https://srfi-email.schemers.org/srfi-168">archive</a>.</p>
+
+    <ul>
+      <li>Received: 2019/4/13</li>
+      <li>Draft #1 published: 2019/4/18</li>
+      <li>Draft #2 published: 2019/4/29</li>
+      <li>Draft #3 published: 2019/6/2</li>
+      <li>Draft #4 published: 2019/6/11</li>
+      <li>Draft #5 published: 2019/9/18</li>
+      <li>Draft #6 published: 2019/10/29</li>
+      <li>Finalized: 2019/11/8</li>
+   </ul>
+
+    <h1>Abstract</h1>
+
+    <p>This library is a generic approach to the database abstractions
+      known as triplestore and quadstore.  Generic Tuple Store
+      Database implements n-tuple ordered sets and associated
+      primitives for working with them in the context of data
+      management.</p>
+
+    <h1>Rationale</h1>
+
+    <p>The industry standard for durable data storage, namely the
+      Relational Database Management System (RDBMS), does not blend
+      nicely into Scheme.  In particular, the SQL programming language
+      is very difficult to embed in Scheme without fallback to string
+      interpolations.  This could explain the poor support of RDBMS in
+      Scheme implementations.</p>
+
+    <p>This SRFI proposes a powerful database abstraction for storing
+      and querying data that integrates well with the existing Scheme
+      landscape by reusing <a href="https://srfi.schemers.org/srfi-9/">SRFI 9</a>,
+      <a href="https://srfi.schemers.org/srfi-128/">SRFI 128</a>,
+      <a href="https://srfi.schemers.org/srfi-146/">SRFI 146</a>, and
+      <a href="https://srfi.schemers.org/srfi-158/">SRFI 158</a>, and
+      relying on SRFI 167, the <a href="https://srfi.schemers.org/srfi-167">Ordered
+	Key Value Store SRFI</a>.  This SRFI comes with a memory
+      storage engine that supports transactions.  It can easily be
+      adapted to implement durability relying on one of the various
+      existing ordered key-value store libraries available in the
+      wild.</p>
+
+    <p>This SRFI does not overlap with existing SRFIs.</p>
+
+    <h1>Specification</h1>
+
+    <p>The following specification defines two disjoint types:</p>
+
+    <ul>
+        <li><code>nstore</code> is an n-tuple store database where n is
+	    fixed.</li>
+        <li><code>variable</code> is an immutable object associated
+	    with a symbol.</li>
+    </ul>
+
+    <p>Also, an implementation must rely on SRFI 158 generators to
+      implement streams, SRFI 146 hash mappings to implement
+      bindings and SRFI 173 hooks.</p>
+
+    <h2 id="generic-tuple-store-database">Generic Tuple Store Database</h2>
+
+    <p>The database abstraction described in this section is an
+      ordered set of tuples with <em>n</em> objects.  A given store
+      will always contain tuples of the same length.</p>
+
+    <h3 id="nstore"><code>(nstore engine prefix items)</code></h3>
+
+    <p>Return an <code>nstore</code> object. <code>ENGINE</code> is an
+        <code>engine</code> record instance as return by <code>make-default-engine</code>
+        described in SRFI 167.
+        <code>DATABASE</code> is an <code>okvs</code> record instance
+        from SRFI 167.  <code>ITEMS</code> describes the names given to
+        a tuple’s items.  It should be a list of symbols.</p>
+
+    <p>In the following, <code>ITEMS</code> is always a list of Scheme
+        objects.  What is accepted in the <code>ITEMS</code> list depends on
+        the implementation of the packing procedures of the <code>engine</code>.</p>
+
+    <h3 id="nstore-predicate"><code>(nstore? object)</code></h3>
+
+    <p>Return a <code>#t</code> if <code>OBJECT</code> is an nstore
+        object and <code>#f</code> otherwise.</p>
+
+    <h3 id="nstore-ask"><code>(nstore-ask? transaction nstore items)</code></h3>
+
+    <p>Return <code>#t</code> if <code>ITEMS</code> is present in the
+      store associated with <code>TRANSACTION</code>.  Otherwise,
+      return <code>#f</code>.</p>
+
+    <h3 id="nstore-add"><code>(nstore-add! transaction nstore items)</code></h3>
+
+    <p>Add <code>ITEMS</code> to the store associated with
+      <code>TRANSACTION</code>.  If <code>ITEMS</code> is already in the
+      associated store, do nothing.  Return value is unspecified.</p>
+
+    <h3 id="nstore-delete"><code>(nstore-delete! transaction nstore items)</code></h3>
+
+    <p>Delete <code>ITEMS</code> from the store associated with
+      <code>TRANSACTION</code>.  Do nothing if <code>ITEMS</code>
+      is not in the store.  Return value is unspecified.</p>
+
+    <h3 id="nstore-var"><code>(nstore-var name)</code></h3>
+
+    <p>Return an object of a disjoint type <code>nstore-var</code>
+      associated with the symbol <code>NAME</code>.</p>
+
+    <h3 id="nstore-var-predicate"><code>(nstore-var? obj) → boolean</code></h3>
+
+    <p>Return <code>#t</code> if <code>OBJ</code> is a variable as
+      returned by <code>nstore-var</code> procedure.  Otherwise, return
+      <code>#f</code>.</p>
+
+    <h3 id="nstore-var-name"><code>(nstore-var-name variable) → symbol</code></h3>
+
+    <p>Return the symbol name associated with <code>VARIABLE</code>.
+      If <code>VARIABLE</code> is not a variable in the sense of
+      <code>var?</code>, the returned value is unspecified.</p>
+
+    <h3 id="nstore-select"><code>(nstore-select transaction nstore pattern [config]) → generator</code></h3>
+
+    <p>Return a generator of bindings where variables (in the sense of
+      <code>nstore-var?</code>) of <code>PATTERN</code> are bound against one or
+      more <em>matching</em> tuples from the store associated with
+      <code>TRANSACTION</code>.  The implementation must return a
+      SRFI 158 generator of SRFI 146 hash mappings.</p>
+
+    <p>A tuple <em>matches</em> a pattern if the tuple has the same
+        items that are not variables as the pattern. The variable will
+        add a key-value pair in a binding that will associate the
+        pattern name with the corresponding value in the tuple.</p>
+
+    <p>For example, given the following pattern:</p>
+
+    <div><pre>(list "P4X432" "blog/url" (nstore-var 'blog/title))</pre></div>
+
+    <p>And given the following tuple in the database:</p>
+
+    <div><pre>(list "P4X432" "blog/url" "https://hyper.dev")</pre></div>
+
+    <p><code>nstore-select</code> will generate a binding that satisfies
+        the following:</p>
+
+    <div><pre>(assume (hashmap->alist binding) '((blog/title . "https://hyper.dev")))</pre></div>
+
+    <p>Note: The generator is valid as long as the transaction is running.
+        If the transaction is commited the generator will not be able to
+        proceed.</p>
+
+    <p>The returned generator is called the <em>seed</em> generator
+        because it doesn’t rely on an existing generator of bindings.</p>
+
+    <p><code>CONFIG</code> is an optional association list that allows
+        to configure the returned generator. It takes the following
+        options:</p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>key</th>
+                <th>description</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>'offset</code></td>
+                <td>specify how many bindings must be skipped.</td>
+            </tr>
+            <tr>
+                <td><code>'limit</code></td>
+                <td>indicates the maximum number of bindings to return.</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <p>Note: The generator order must be stable to allow pagination.</p>
+
+    <p>Note: In the case where there is single variable in <code>PATTERN</code>
+        the generator must be ordered.</p>
+
+    <h3 id="nstore-where"><code>(nstore-where transaction nstore pattern) → procedure → generator</code></h3>
+
+    <p>Return a procedure that takes a generator of bindings as
+      argument and returns a generator of bindings where variables of
+      <code>PATTERN</code> are bound to one or more <em>matching</em>
+      tuples from the store associated with
+      <code>TRANSACTION</code>.</p>
+
+    <p>Note: The generator returned by <code>nstore-where</code> is flat.  It
+        is NOT a generator of generators.</p>
+
+    <p>Let's pick the previous example and imagine that we have a generator
+        that contains a binding that satisfies the following:</p>
+
+    <div><pre>(assume (hashmap->alist binding) '((blog/url . "https://hyper.dev")))</pre></div>
+
+    <div>Given another pattern passed to <code>nstore-where</code>:</div>
+
+    <div><pre>(list (nstore-var 'blog/url) "url/valid" (nstore-var 'url/valid))</pre></div>
+
+    <p><code>nstore-where</code> will bind the pattern using the binding that
+        <code>nstore-select</code> generated as described above, which will result
+        in the following pattern:</p>
+
+    <div><pre>(list "https://hyper.dev" "url/valid" (nstore-var 'url/valid))</pre></div>
+
+    <p>Then that pattern is used to look up matching tuples in the
+        database similarly to how <code>nstore-select</code> generated the first binding.
+        If there is a matching tuple, it generates a new binding. For instance,
+        if there is a tuple like the following:</p>
+
+    <div><pre>(list "https://hyper.dev" 'url/valid #t)</pre></div>
+
+    <p>In that case, the original binding will generate one new binding that
+        associates <code>'url/valid</code> to <code>#t</code></p>
+
+    <p>Otherwise there is no matching tuple, the original binding is
+        discarded possibly making the generator returned by <code>nstore-where</code>
+        empty.</p>
+
+    <p>Note: the generator is valid as long as the transaction is running.
+        If the transaction is commited the generator will not be able to
+        proceed.</p>
+
+    <h3 id="nstore-query"><code>(nstore-query &lt;from&gt; &lt;where&gt; ...) → generator</code> syntax</h3>
+
+    <p><code>nstore-query</code> will chain the generators passing what is generated
+        by the <code>select</code> clause to the <code>where</code> clauses in order.</p>
+
+    <p>Here the definition of <code>nstore-query</code></p>
+
+    <div><pre>    (define-syntax nstore-query
+      (syntax-rules ()
+        ((_ value) value)
+        ((_ value f rest ...)
+         (nstore-query (f value) rest ...))))</pre></div>
+
+    <h3 id="hooks">Hooks</h3>
+
+    <p><a href="https://srfi.schemers.org/srfi-173/">SRFI 173</a> hooks
+        are procedures that are executed at specific times during the
+        life of an nstore. They allow one to sneak into the mutation
+        procedures to do validation, keep indices synchronized or carry out
+        other operations.</p>
+
+    <h4 id="nstore-hook-on-add"><code>(nstore-hook-on-add nstore)</code></h4>
+
+    <p>This procedure returns the hook object associated with <code>nstore-add</code>
+        procedure.</p>
+
+    <p>The hook is run before the operation is executed. The procedures associated
+        with the hook will take a SRFI 167 <code>transaction</code> object
+        along with the tuple that is added. The arity of the hook is two.</p>
+
+    <h4 id="nstore-hook-on-delete"><code>(nstore-hook-on-delete nstore)</code></h4>
+
+    <p>This procedure returns the hook object associated with <code>nstore-delete!</code>
+        procedure.</p>
+
+    <p>The hook is run before the operation is executed. The procedures associated
+        with the hook will take a SRFI 167 <code>transaction</code> object
+        along with the tuple that is deleted. The arity of the hook is two.</p>
+
+    <h2 id="example">Example</h2>
+
+    <p>Here is an example use:</p>
+
+    <div class="sourceCode" id="cb1"><pre class="sourceCode scheme"><code class="sourceCode scheme"><a class="sourceLine" id="cb1-1" data-line-number="1">(import (scheme base))</a>
+<a class="sourceLine" id="cb1-2" data-line-number="2">(import (scheme generator))</a>
+<a class="sourceLine" id="cb1-3" data-line-number="3">(import (scheme mapping hash))</a>
+<a class="sourceLine" id="cb1-4" data-line-number="4"></a>
+<a class="sourceLine" id="cb1-5" data-line-number="5">(import (okvs))</a>
+<a class="sourceLine" id="cb1-6" data-line-number="6">(import (nstore))</a>
+<a class="sourceLine" id="cb1-7" data-line-number="7"></a>
+<a class="sourceLine" id="cb1-8" data-line-number="8"></a>
+<a class="sourceLine" id="cb1-9" data-line-number="9">(<span class="kw">define</span><span class="fu"> </span>(make-triplestore prefix)</a>
+<a class="sourceLine" id="cb1-10" data-line-number="10"></a>
+<a class="sourceLine" id="cb1-11" data-line-number="11">    (nstore engine prefix &#39;(subject predicate object)))</a>
+<a class="sourceLine" id="cb1-12" data-line-number="12"></a>
+<a class="sourceLine" id="cb1-13" data-line-number="13"></a>
+<a class="sourceLine" id="cb1-14" data-line-number="14">(<span class="kw">define</span><span class="fu"> triplestore </span>(make-triplestore &#39;(<span class="dv">0</span>)))</a>
+<a class="sourceLine" id="cb1-15" data-line-number="15"></a>
+<a class="sourceLine" id="cb1-16" data-line-number="16">(<span class="kw">define</span><span class="fu"> database </span>(okvs <span class="st">&quot;/data&quot;</span> <span class="dv">#t</span>))</a>
+<a class="sourceLine" id="cb1-17" data-line-number="17"></a>
+<a class="sourceLine" id="cb1-18" data-line-number="18">(<span class="kw">define</span><span class="fu"> </span>(add-blog-post! transaction title body keywords)</a>
+<a class="sourceLine" id="cb1-19" data-line-number="19">  (nstore-add! transaction triplestore title &#39;post/body body)</a>
+<a class="sourceLine" id="cb1-20" data-line-number="20">  (<span class="kw">let</span> loop ((keywords keywords))</a>
+<a class="sourceLine" id="cb1-21" data-line-number="21">    (unless (<span class="kw">null?</span> keywords)</a>
+<a class="sourceLine" id="cb1-22" data-line-number="22">      (nstore-add! transaction triplestore title &#39;post/keyword (<span class="kw">car</span> keywords))</a>
+<a class="sourceLine" id="cb1-23" data-line-number="23">      (loop (<span class="kw">cdr</span> keywords)))))</a>
+<a class="sourceLine" id="cb1-24" data-line-number="24"></a>
+<a class="sourceLine" id="cb1-25" data-line-number="25">(okvs-in-transaction database</a>
+<a class="sourceLine" id="cb1-26" data-line-number="26">                     (<span class="kw">lambda</span> (transaction)</a>
+<a class="sourceLine" id="cb1-27" data-line-number="27">                       (add-blog-post! transaction</a>
+<a class="sourceLine" id="cb1-28" data-line-number="28">                                       <span class="st">&quot;Hello, world!&quot;</span></a>
+<a class="sourceLine" id="cb1-29" data-line-number="29">                                       <span class="st">&quot;First post.&quot;</span></a>
+<a class="sourceLine" id="cb1-30" data-line-number="30">                                       &#39;(scheme))))</a>
+<a class="sourceLine" id="cb1-31" data-line-number="31"></a>
+<a class="sourceLine" id="cb1-32" data-line-number="32">(okvs-in-transaction database</a>
+<a class="sourceLine" id="cb1-33" data-line-number="33">                     (<span class="kw">lambda</span> (transaction)</a>
+<a class="sourceLine" id="cb1-34" data-line-number="34">                       (add-blog-post! transaction</a>
+<a class="sourceLine" id="cb1-35" data-line-number="35">                                       <span class="st">&quot;okvs for the win&quot;</span></a>
+<a class="sourceLine" id="cb1-36" data-line-number="36">                                       <span class="st">&quot;With okvs one can build powerful abstractions.&quot;</span></a>
+<a class="sourceLine" id="cb1-37" data-line-number="37">                                       &#39;(okvs scheme database))))</a>
+<a class="sourceLine" id="cb1-38" data-line-number="38"></a>
+<a class="sourceLine" id="cb1-39" data-line-number="39">(okvs-in-transaction database</a>
+<a class="sourceLine" id="cb1-40" data-line-number="40">                     (<span class="kw">lambda</span> (transaction)</a>
+<a class="sourceLine" id="cb1-41" data-line-number="41">                       (add-blog-post! transaction</a>
+<a class="sourceLine" id="cb1-42" data-line-number="42">                                       <span class="st">&quot;Easy on-disk persistence&quot;</span></a>
+<a class="sourceLine" id="cb1-43" data-line-number="43">                                       <span class="st">&quot;nstore is a database abstraction.&quot;</span></a>
+<a class="sourceLine" id="cb1-44" data-line-number="44">                                       &#39;(nstore scheme database))))</a>
+<a class="sourceLine" id="cb1-45" data-line-number="45"></a>
+<a class="sourceLine" id="cb1-46" data-line-number="46">(okvs-in-transaction database</a>
+<a class="sourceLine" id="cb1-47" data-line-number="47">                     (<span class="kw">lambda</span> (transaction)</a>
+<a class="sourceLine" id="cb1-48" data-line-number="48">                       (add-blog-post! transaction</a>
+<a class="sourceLine" id="cb1-49" data-line-number="49">                                       <span class="st">&quot;hoply&quot;</span></a>
+<a class="sourceLine" id="cb1-50" data-line-number="50">                                       <span class="st">&quot;hoply is an implementation in python.&quot;</span></a>
+<a class="sourceLine" id="cb1-51" data-line-number="51">                                       &#39;(nstore python database))))</a>
+<a class="sourceLine" id="cb1-52" data-line-number="52"></a>
+<a class="sourceLine" id="cb1-53" data-line-number="53">(okvs-in-transaction database</a>
+<a class="sourceLine" id="cb1-54" data-line-number="54">                     (<span class="kw">lambda</span> (transaction)</a>
+<a class="sourceLine" id="cb1-55" data-line-number="55">                       (generator-map-&gt;list</a>
+<a class="sourceLine" id="cb1-56" data-line-number="56">                        (<span class="kw">lambda</span> (binding) (hashmap-ref binding &#39;post/title))</a>
+<a class="sourceLine" id="cb1-57" data-line-number="57">                        (nstore-query</a>
+<a class="sourceLine" id="cb1-58" data-line-number="58">                         (nstore-select transaction triplestore</a>
+<a class="sourceLine" id="cb1-59" data-line-number="59">                                      (<span class="kw">list</span> (nstore-var &#39;post/title)</a>
+<a class="sourceLine" id="cb1-60" data-line-number="60">                                            &#39;post/keyword</a>
+<a class="sourceLine" id="cb1-61" data-line-number="61">                                            &#39;scheme))</a>
+<a class="sourceLine" id="cb1-62" data-line-number="62">                         (nstore-where transaction triplestore</a>
+<a class="sourceLine" id="cb1-63" data-line-number="63">                                       (<span class="kw">list</span> (nstore-var &#39;post/title)</a>
+<a class="sourceLine" id="cb1-64" data-line-number="64">                                             &#39;post/keyword</a>
+<a class="sourceLine" id="cb1-65" data-line-number="65">                                             &#39;database))))))</a>
+<a class="sourceLine" id="cb1-66" data-line-number="66"></a>
+<a class="sourceLine" id="cb1-67" data-line-number="67"><span class="co">;; =&gt; &#39;(&quot;Easy on-disk persistence&quot; &quot;okvs for the win&quot;)</span></a></code></pre></div>
+
+    <h1>Implementation</h1>
+
+    <p>Here is the <a href="https://srfi.schemers.org/srfi-168/srfi-168.tgz">sample
+        implementation</a>.</p>
+
+    <h1>Acknowledgements</h1>
+
+    <p>Credit goes first to <a href="https://cognitect.com/">Cognitect</a>
+      for creating the <a href="https://www.datomic.com/">Datomic</a>
+      database which inspired this work.  <a href="https://stackoverflow.com/">StackOverflow</a>
+      user <a href="https://stackoverflow.com/users/9433491/zhoraster">zhoraster</a>
+      helped pin the mathematics behind the generic implementation of
+      tuple stores and Mike Earnest provided an algorithm to compute
+      the minimal set of tuple items permutations that allows
+      efficient querying.  The author would like to thank Arthur
+      A. Gleckler and Marc Nieper-Wißkirchen for getting together SRFI
+      146 and Shiro Kawai, John Cowan, and Thomas Gilray for working
+      on SRFI 158.</p>
+
+    <h1>Copyright</h1>
+
+    <p>Copyright (C) Amirouche Boubekki (2019).</p>
+
+    <p>Permission is hereby granted, free of charge, to any person
+      obtaining a copy of this software and associated documentation
+      files (the “Software”), to deal in the Software without
+      restriction, including without limitation the rights to use,
+      copy, modify, merge, publish, distribute, sublicense, and/or
+      sell copies of the Software, and to permit persons to whom the
+      Software is furnished to do so, subject to the following
+      conditions:</p>
+
+    <p>The above copyright notice and this permission notice
+      (including the next paragraph) shall be included in all copies or
+      substantial portions of the Software.</p>
+
+    <p>THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND,
+      EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+      MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+      NONINFRINGEMENT.  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+      BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+      ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+      CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+      SOFTWARE.</p>
+  <hr>
+  <address>Editor: <a href="mailto:srfi-editors+at+srfi+dot+schemers+dot+org">Arthur A. Gleckler</a></address>
+</body>
+</html>

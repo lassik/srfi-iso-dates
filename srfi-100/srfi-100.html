@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SRFI 100: define-lambda-object</title>
+  <meta name="viewport" content=
+  "width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/srfi.css" type="text/css">
+  <link href="/favicon.png" rel="icon" sizes="192x192" type=
+  "image/png">
+</head>
+<body>
+  <h1>Title</h1>
+  <p>define-lambda-object</p>
+  <h1>Author</h1>
+  <p>Joo ChurlSoo</p>
+  <h1>Status</h1>
+  <p>This SRFI is currently in <em>final</em> status. Here is
+  <a href="https://srfi.schemers.org/srfi-process.html">an
+  explanation</a> of each status that a SRFI can hold. To provide
+  input on this SRFI, please send email to <code><a href=
+  "mailto:srfi+minus+100+at+srfi+dotschemers+dot+org">srfi-100@<span class="antispam">nospam</span>srfi.schemers.org</a></code>.
+  To subscribe to the list, follow <a href=
+  "https://srfi.schemers.org/srfi-list-subscribe.html">these
+  instructions</a>. You can access previous messages via the
+  mailing list <a href=
+  "https://srfi-email.schemers.org/srfi-100">archive</a>.</p>
+  <ul>
+    <li>Received: <a href=
+    "https://srfi.schemers.org/srfi-100/srfi-100-1.1.txt">2009/08/31</a>
+    </li>
+    <li>Revised: <a href=
+    "https://srfi.schemers.org/srfi-100/srfi-100-1.2.txt">2009/09/14</a>
+    </li>
+    <li>Revised: <a href=
+    "https://srfi.schemers.org/srfi-100/srfi-100-1.3.txt">2009/09/22</a>
+    </li>
+    <li>Revised: <a href=
+    "https://srfi.schemers.org/srfi-100/srfi-100-1.4.txt">2009/09/30</a>
+    </li>
+    <li>Revised: <a href=
+    "https://srfi.schemers.org/srfi-100/srfi-100-1.5.txt">2009/10/05</a>
+    </li>
+    <li>Revised: <a href=
+    "https://srfi.schemers.org/srfi-100/srfi-100-1.6.txt">2010/06/14</a>
+    </li>
+    <li>Finalized: <a href=
+    "https://srfi.schemers.org/srfi-100/srfi-100-1.7.txt">2010/06/21</a>
+    </li>
+    <li>Draft: 2009/09/09-2009/11/09</li>
+    <li>Conversion to HTML: 2019/09/18</li>
+  </ul>
+  <h1>Abstract</h1>
+  <p>This SRFI introduces a macro, DEFINE-LAMBDA-OBJECT which
+  defines a set of procedures, that is, a group, two constructors,
+  and a predicate. The constructors also make a group of
+  procedures, namely lambda objects. The macro extends
+  DEFINE-RECORD-TYPE (SRFI 9) in being more general but much less
+  general than DEFCLASS (CLOS). The macro has no explicit field
+  accessors and mutators but parent groups, required fields,
+  optional fields, automatic fields, read-write fields, read-only
+  fields, inaccessible hidden fields, immutable virtual fields, and
+  common sharing fields.</p>
+  <h1>Rationale</h1>
+  <p>An object created by a constructor procedure is a procedure
+  whose first argument is a symbolized field name that is used to
+  identify fields. The lambda object plays the role of the accessor
+  and mutator of each field. Though the average time required to
+  access a randomly chosen field is more for the lambda object than
+  for the accessors and mutators of most other record-defining
+  macros that use field indices to indentify fields, the lambda
+  object makes the troublesome explicit or implicit accessors and
+  mutators unnecessary. In addition, this makes the accesors and
+  mutators to be automatically `nongenerative' and reduces the role
+  of the predicate procedure. Although DEFINE-RECORD-TYPE of R6RS
+  can also have implicit accessors and mutators, they should know
+  their own record name. Further more, when there are parents, they
+  should know both their own record name and their parents' record
+  names, which could make users confused, though there is an
+  advantage that a record can have another field with the same
+  name.</p>
+  <p>This macro works not only as DEFINE-RECORD-TYPE with required
+  fields but also as DEFSTRUCT of Common Lisp with optional fields.
+  The automatic field can be used as a procedure that modifies or
+  handles the values of the other fields.</p>
+  <p>When a group has multiple parent groups, all the fields of
+  parent groups must exist in the field spec of the child group in
+  contrary with DEFINE-RECORD-TYPE of R6RS. This is too much
+  trouble in case parent groups have several tens of fields. But it
+  also has the advantage of reconfirming the existence and
+  properties of each field, and making the constructors to be able
+  to be defined irrespectively the order of the parents' fields.
+  From a practical point of view, inheritance may be superfluous in
+  this macro as the lambda object itself has data and methods as
+  well as their accessors and mutators.</p>
+  <h1>Specification</h1>
+  <pre>
+(define-lambda-object &lt;group spec&gt; &lt;field spec&gt;)
+
+&lt;group spec&gt; --&gt; &lt;group&gt; | (&lt;group&gt; &lt;parent group&gt;*)
+
+&lt;parent group&gt; --&gt; &lt;group&gt;                       ;unamendable group
+                | (&lt;group&gt;)                       ;amendable group
+
+&lt;field spec&gt; --&gt; &lt;required field&gt;* &lt;optional field&gt;* &lt;automatic field&gt;*
+
+&lt;required field&gt; --&gt; &lt;field&gt;                     ;read-only field
+                   | (&lt;field&gt;)                    ;read-write field
+
+&lt;optional field&gt; --&gt; (&lt;field&gt;  &lt;default&gt;)  ;read-only field
+                   | ((&lt;field&gt;) &lt;default&gt;)  ;read-write field
+                   | ('&lt;field&gt; &lt;default&gt;)   ;inaccessible hidden field
+
+&lt;automatic field&gt; --&gt; (,&lt;field&gt;  &lt;default&gt;)        ;read-only field
+                    | ((,&lt;field&gt;) &lt;default&gt;)        ;read-write field
+                    | (',&lt;field&gt;  &lt;default&gt;)        ;inaccessible hidden field
+                    | (`,&lt;field&gt;  &lt;default&gt;)        ;immutable virtual field
+                    | (,,&lt;field&gt; &lt;default&gt;) ;common read-only field
+                    | ((,,&lt;field&gt;) &lt;default&gt;)       ;common read-write field
+</pre>
+  <p>The name of <code>&lt;constructor&gt;</code> is generated by
+  prefixing `make-' to the group name, or by prefixing `make-' and
+  postfixing `-by-name' to the group name. The name of
+  <code>&lt;predicate&gt;</code> is generated by adding a question
+  mark (`?') to the end of the group name.</p>
+  <p>The <code>&lt;group&gt;</code> and <code>&lt;field&gt;</code>
+  must be identifiers.</p>
+  <p>Each <code>&lt;default&gt;</code> is an
+  <code>&lt;expression&gt;</code> that is evaluated in an
+  environment that the values of all the previous
+  <code>&lt;field&gt;</code>s are visible. There is one exception
+  to this rule. The <code>&lt;default&gt;</code>s of
+  <code>&lt;automatic common field&gt;</code>s are evaluated in the
+  outer environment of the define-lambda-object form, and their
+  values are visible as the <code>&lt;default&gt;</code>s of the
+  other fields are evaluated.</p>
+  <p>The define-lambda-object form is a definition and can appear
+  anywhere any other <code>&lt;definition&gt;</code> can appear.
+  Each time define-lambda-object form is evaluated, a new group is
+  created with distinct <code>&lt;group&gt;</code>,
+  <code>&lt;constructor&gt;</code>, and
+  <code>&lt;predicate&gt;</code> procedures.</p>
+  <p>The <code>&lt;group&gt;</code> is bound to a procedure of one
+  argument. Like a gene, it has information on its <code>&lt;parent
+  group&gt;</code>s, <code>&lt;constructor&gt;</code>s,
+  <code>&lt;predicate&gt;</code>, and the number and properties of
+  <code>&lt;field&gt;</code>s. And they are checked out whenever
+  define-lambda-object form is evaluated. In case of inheritance,
+  all the <code>&lt;field&gt;</code>s of <code>&lt;parent
+  group&gt;</code>s must exist in the <code>&lt;field
+  spec&gt;</code> of the child group, irrespectively of the order.
+  Otherwise an error is signaled. In addition, the properties
+  (mutability, sort of field, and default expression) of
+  <code>&lt;field&gt;</code>s of unamendable groups must be
+  preserved in contrast with those of amendable groups. Otherwise
+  an error is signaled.</p>
+  <p>The <code>&lt;constructor&gt;</code> is bound to a procedure
+  that takes at least as many arguments as the number of
+  <code>&lt;required field&gt;</code>s. Whenever it is called, it
+  returns an object of the <code>&lt;group&gt;</code>, namely a
+  procedure, which has information on its own group and all that
+  goes with it. Its first argument must be a symbol of the same
+  name as <code>&lt;field&gt;</code>. Otherwise an error is
+  signaled. The object becomes an accessor procedure of each
+  <code>&lt;field&gt;</code> in case of one argument and a mutator
+  procedure of each <code>&lt;field&gt;</code> in case of two
+  arguments where the second argument is a new field value.</p>
+  <p>The names of <code>&lt;field&gt;</code>s are used to access
+  the <code>&lt;field&gt;</code>s as symbols of the same names. So
+  they must be distinct. Otherwise an error is signaled. The
+  read-write fields can be modified, whereas any attempt to modify
+  the values of the read-only fields via mutators signals an error.
+  Note: The read-only fields are not immutable. Their values, for
+  instance, can be modified by other fields whose values work like
+  their mutators.</p>
+  <p>The <code>&lt;required field&gt;</code> is initialized to the
+  first one of the remaining arguments. If there are no more
+  remaining arguments, an error is signaled.</p>
+  <p>The initialization of the <code>&lt;optional field&gt;</code>s
+  is done by two types of <code>&lt;constructor&gt;</code>s:</p>
+  <ol>
+    <li><code>&lt;make-`group-name'&gt;</code> constructor The
+    initialization method of <code>&lt;optional field&gt;</code>s
+    is the same as that of <code>&lt;required field&gt;</code>s
+    except that the field is bound to the
+    <code>&lt;default&gt;</code> instead of signaling an error if
+    there are no more remaining arguments.</li>
+    <li><code>&lt;make-`group-name'-by-name&gt;</code> constructor
+    The name used at a call site for the corresponding
+    <code>&lt;optional field&gt;</code> is a symbol of the same
+    name as the <code>&lt;field&gt;</code>. The remaining arguments
+    are sequentially interpreted as a series of pairs, where the
+    first member of each pair is a field name and the second is the
+    corresponding value. If there is no element for a particular
+    field name, the field is initialized to the
+    <code>&lt;default&gt;</code>.</li>
+  </ol>
+  <p>The <code>&lt;automatic common field&gt;</code>s are
+  initialized to each corresponding <code>&lt;default&gt;</code>
+  that is evaluated at the time the define-lambda-object form is
+  evaluated, and the values are shared with all the lambda objects
+  that are maded by the constructors of the define-lambda-object
+  form. The other <code>&lt;automatic field&gt;</code>s except
+  <code>&lt;automatic virtual field&gt;</code>s are initialized to
+  each corresponding <code>&lt;default&gt;</code> that is evaluated
+  at the time the lambda object is made by a constructor. The
+  <code>&lt;hidden field&gt;</code> is an externally nonexistent
+  field, that is, the field is invisible outside of the
+  define-lambda-object form but visible inside of it. On the
+  contrary, the <code>&lt;virtual field&gt;</code> is an internally
+  nonexistent field whose <code>&lt;default&gt;</code> is evaluated
+  each time when the field is accessed.</p>
+  <p>The <code>&lt;predicate&gt;</code> is a predicate procedure
+  that returns #t for objects constructed by
+  <code>&lt;constructor&gt;</code> or
+  <code>&lt;constructor&gt;</code>s for child groups and #f for
+  everything else.</p>
+  <h1>Examples</h1>
+  <pre>
+;; The `x' is a read-write field.
+;; The `y' is a read-only field.
+(define-lambda-object ppoint (x) y)
+
+(define pp  (make-ppoint 10 20))
+(pp 'x)                                 =&gt; 10
+(pp 'y)                                 =&gt; 20
+(pp 'x 11) (pp 'x)                      =&gt; 11
+(pp 'y 22)                              =&gt; error: read-only field y
+
+;; The parent group `ppoint' is an unamendable group.
+(define-lambda-object (cpoint ppoint) x y color)
+                              =&gt; error: incompatible read-write field ppoint x
+
+;; The 'color-init' and 'area-init' are automatic fields.
+;; The 'color' and 'area' are virtual fields.
+(define color 'black)
+(define-lambda-object (cpoint ppoint)
+  (x) y
+  (,color-init color) (,area-init (* x y))
+  (`,color color) (`,area (* x y)))
+
+(define ap (make-cpoint 3 33 'black))           =&gt; error: expects 2 arguments
+(define ap (make-cpoint 10 20))
+(map ap '(x y color-init color area-init area)) =&gt; (10 20 black black 200 200)
+(ap 'x 30)
+(map ap '(x y color-init color area-init area)) =&gt; (30 20 black black 200 600)
+(set! color 'white)
+(map ap '(x y color-init color area-init area)) =&gt; (30 20 black white 200 600)
+
+;; The 'color' is an automatic common field.
+(define-lambda-object (cpoint ppoint)
+  (x) y
+  ((,,color) color)
+  (`,area (* x y))
+  (,set/add (lambda (i j) (set! x (+ i x)) (set! y (+ j y)))))
+
+(define tp (make-cpoint 10 15))
+(map tp '(x y color area))              =&gt; (10 15 white 150)
+(define cp (make-cpoint 15 20))
+(map cp '(x y color area))              =&gt; (15 20 white 300)
+(cp 'color 'brown)
+((cp 'set/add) 5 10)
+(map cp '(x y color area))              =&gt; (20 30 brown 600)
+(map tp '(x y color area))              =&gt; (10 15 brown 150)
+(cpoint? ap)                            =&gt; #f
+(cpoint? tp)                            =&gt; #t
+(cpoint? cp)                            =&gt; #t
+(ppoint? cp)                            =&gt; #t
+
+;; The parent group `ppoint' is an amendable group.
+;; The 'stack' is an optional hidden field.
+;; The 'pop' is a virtual field.
+;; The 'push' is an automatic field.
+(define-lambda-object (spoint (ppoint))
+  (x 0) (y x) (z x) ('stack '())
+  (`,pop (if (null? stack)
+             (error 'spoint "null stack" stack)
+             (let ((s (car stack))) (set! stack (cdr stack)) s)))
+  (,push (lambda (s) (set! stack (cons s stack)))))
+
+(define sp (make-spoint))
+(map sp '(x y z))                       =&gt; (0 0 0)
+(define sp (make-spoint 5 55))
+(map sp '(x y z))                       =&gt; (5 55 5)
+(define sp (make-spoint-by-name 'z 100 'stack (list 'sunflower)))
+(map sp '(x y z))                       =&gt; (0 0 100)
+((sp 'push) 'rose) ((sp 'push) 'lily)
+(sp 'pop)                               =&gt; lily
+(sp 'pop)                               =&gt; rose
+(sp 'pop)                               =&gt; sunflower
+(sp 'pop)                               =&gt; error: null stack ()
+(sp 'stack)                             =&gt; error: absent field stack
+
+;; The 'stack' is an automatic hidden field.
+;; The `set/add' is the same automatic field as that of `cpoint' group,
+;; but it has a different default which simulates polymorphism and overloading.
+(define-lambda-object (epoint (spoint) (cpoint))
+  ((x) 5) ((y) 10) ((z) 15) ((planet) "earth")
+  (,,color "brown")
+  (',stack '())
+  (`,area (* x y))
+  (`,volume (* x y z))
+  (`,pop (if (null? stack)
+             (error 'spoint "null stack" stack)
+             (let ((s (car stack))) (set! stack (cdr stack)) s)))
+  (,push (lambda (s) (set! stack (cons s stack))))
+  (,adbmal (lambda (f) (f x y z color planet (* x y) (* x y z))))
+  (,set/add
+   (case-lambda
+    ((i j) (cond
+            ((and (string? i) (string? j)) (set! color i) (set! planet j))
+            ((and (number? i) (number? j)) (set! x (+ i x)) (set! y (+ j y)))
+            (else (error 'epoint "set/add: wrong data type" i j))))
+    ((i j k) (set! x (+ i x)) (set! y (+ j y)) (set! z (+ k z))))))
+
+(define ep (make-epoint-by-name 'planet "jupiter"))
+((ep 'adbmal) vector)                   =&gt; #(5 10 15 "brown" "jupiter" 50 750)
+(define tp (make-epoint 10 15 20))
+((tp 'adbmal) vector)                   =&gt; #(10 15 20 "brown" "earth" 150 3000)
+(map (lambda (o) (o 'x)) (list pp ap cp sp ep))
+                                        =&gt; (11 30 20 0 5)
+(map (lambda (p) (p ep)) (list ppoint? cpoint? spoint? epoint?))
+                                        =&gt; (#t #t #t #t)
+((ep 'set/add) "red" "mars")
+((ep 'adbmal) list)                     =&gt; (5 10 15 "red" "mars" 50 750)
+((tp 'adbmal) list)                     =&gt; (10 15 20 "red" "earth" 150 3000)
+((ep 'set/add) 5 10)
+((ep 'adbmal) list)                     =&gt; (10 20 15 "red" "mars" 200 3000)
+((ep 'set/add) 10 30 50)
+(map ep '(x y z area volume))           =&gt; (20 50 65 1000 65000)
+(map cp '(x y area))                    =&gt; (20 30 600)
+((cp 'set/add) 20 50)
+(map cp '(x y area))                    =&gt; (40 80 3200)
+((cp 'set/add) 10 100 1000)             =&gt; error: expects 2 arguments
+
+epoint                          =&gt; #&lt;procedure:epoint&gt;
+(epoint 'parent)                =&gt; (#&lt;procedure:spoint&gt; #&lt;procedure:cpoint&gt;)
+(epoint 'constructor)           =&gt; (#&lt;procedure:make-epoint&gt; #&lt;procedure:make-epoint-by-name&gt;)
+(epoint 'predicate)             =&gt; #&lt;procedure:epoint?&gt;
+(epoint 'read-write-field)      =&gt; (x y z planet)
+(epoint 'read-only-field)       =&gt; (color area volume pop push adbmal set/add)
+(epoint 'required-field)        =&gt; ()
+(epoint 'optional-field)        =&gt; ((x 5) (y 10) (z 15) (planet "earth"))
+(epoint 'common-field)          =&gt; ((color "brown"))
+(epoint 'hidden-field)          =&gt; ((stack '()))
+(epoint 'virtual-field)         =&gt; ((area (* x y))
+                                    (volume (* x y z))
+                                    (pop (if (null? stack)
+                                             (error 'spoint "null stack" stack)
+                                             (let ((s (car stack)))
+                                               (set! stack (cdr stack)) s))))
+(epoint 'automatic-field)
+=&gt;((color "brown")
+   (area (* x y))
+   (volume (* x y z))
+   (pop
+    (if (null? stack)
+        (error 'spoint "null stack" stack)
+        (let ((s (car stack))) (set! stack (cdr stack)) s)))
+   (stack '())
+   (push (lambda (s) (set! stack (cons s stack))))
+   (adbmal (lambda (f) (f x y z color planet (* x y) (* x y z))))
+   (set/add
+    (case-lambda
+     ((i j)
+      (cond
+       ((and (string? i) (string? j)) (set! color i) (set! planet j))
+       ((and (number? i) (number? j)) (set! x (+ i x)) (set! y (+ j y)))
+       (else (error 'epoint "set/add: wrong data type" i j))))
+     ((i j k) (set! x (+ i x)) (set! y (+ j y)) (set! z (+ k z))))))
+</pre>
+  <h1>Implementation</h1>
+  <p>The <a href="srfi-100.scm">implementation</a> is written in
+  R6RS hygienic macro and define-macro.</p>
+  <p>The predicate procedure is implementation dependant. For
+  instance, a procedure such as procedure-name or object-name,
+  which returns the name of procedure or object, must be available
+  to distinguish objects created by all the constructors from the
+  others.</p>
+  <h1>References</h1>
+  <pre>
+[R6RS]      Michael Sperber, R. Kent Dybvig, Matthew Flatt, and
+            Anton von Straaten:
+            Revised(6) Report on the Algorithmic Language Scheme
+            http://www.r6rs.org
+[SRFI 9]    Richard Kelsey: Defining Record Type
+            http://srfi.schemers.org/srfi-9
+[On Lisp]   Paul Graham:
+            http://www.paulgraham.com/onlisp.html
+</pre>
+  <h1>Copyright</h1>
+  <p>Copyright (c) 2009 Joo ChurlSoo.</p>
+  <p>Permission is hereby granted, free of charge, to any person
+  obtaining a copy of this software and associated documentation
+  files (the ``Software''), to deal in the Software without
+  restriction, including without limitation the rights to use,
+  copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the
+  Software is furnished to do so, subject to the following
+  conditions:</p>
+  <p>The above copyright notice and this permission notice shall be
+  included in all copies or substantial portions of the
+  Software.</p>
+  <p>THE SOFTWARE IS PROVIDED ``AS IS'', WITHOUT WARRANTY OF ANY
+  KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+  WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE
+  AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+  HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+  WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+  OTHER DEALINGS IN THE SOFTWARE.</p>
+  <address>
+    Editor: Mike Sperber
+  </address>
+</body>
+</html>

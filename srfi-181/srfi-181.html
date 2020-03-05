@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>SRFI 181: Custom ports</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/srfi.css" type="text/css" />
+    <link href="/favicon.png" rel="icon" sizes="192x192" type="image/png" />
+  </head>
+
+  <body>
+
+<h1>Title</h1>
+
+Custom ports
+
+<h1>Author</h1>
+
+The R6RS editors; John Cowan (shepherd)
+
+<h1>Status</h1>
+
+<p>This SRFI is currently in <em>draft</em> status.  Here is <a href="https://srfi.schemers.org/srfi-process.html">an explanation</a> of each status that a SRFI can hold.  To provide input on this SRFI, please send email to <code><a href="mailto:srfi+minus+181+at+srfi+dotschemers+dot+org">srfi-181@<span class="antispam">nospam</span>srfi.schemers.org</a></code>.  To subscribe to the list, follow <a href="https://srfi.schemers.org/srfi-list-subscribe.html">these instructions</a>.  You can access previous messages via the mailing list <a href="https://srfi-email.schemers.org/srfi-181">archive</a>.</p>
+<ul>
+  <li>Received: 2020/2/15</li>
+  <li>60-day deadline: 2020/4/15</li>
+  <li>Draft #1 published: 2020/2/15</li>
+</ul>
+
+<h1>Abstract</h1>
+
+This is an extract from the R6RS that documents its support for custom ports.
+These provide a hook into the Scheme port system from below, allowing the
+creation of binary and textual ports that behave exactly like file, string,
+and bytevector ports, but whose basic operations are provided by user code.
+It has been lightly edited to fit R7RS style.
+
+<h1>Issues</h1>
+
+None at present.
+
+<h1>Rationale</h1>
+
+<p>When reading from (or writing to) files, devices, pipes, sockets,
+or other sources (or sinks) of data, it's often useful or necessary
+to include one or more transformations on the data.</p>
+
+<p>All of these can be done at a level above Scheme ports, but with some
+loss in convenience.  In particular, the high-level Scheme procedures
+like <code>read</code>, <code>write</code>, and <code>display</code>
+only accept port arguments.  By making it possible to create custom ports
+that accept a low-level read (write) operation, perform a transformation,
+and pass it on to some other port, convenience is served.  It is also
+straightforward to chain custom ports together
+in order to create transformation pipelines.</p>
+
+<p>Examples of such transformations include:</p>
+<ul>
+<li>compression and decompression</li>
+<li>encryption and decryption</li>
+<li>character encoding and decoding</li>
+<li>concatenation of multiple input ports</li>
+<li>broadcasting to multiple output ports simultaneously</li>
+<li>input ports that echo their input to a specified output port</li>
+<li>ports which read from or write to a port<br>
+which is the value of a parameter at the time of the read or write</li>
+<li>script transliteration</li>
+<li>object serialization and deserialization</li>
+<li>code obfuscation</li>
+</ul>
+
+<h1>Specification</h1>
+
+<div align=left><code>(make-custom-binary-input-port <i>id</i> <i>read!</i></code>
+<i>get-position</i>&nbsp;<i>set-position!</i>&nbsp;<i>close</i>)</code></div><p>
+Returns a newly created binary input port whose byte source is
+an arbitrary algorithm represented by the <i>read!</i> procedure.
+<i>Id</i> is a string naming the new port,
+provided for informational purposes only.
+<i>Read!</i> is a procedure that behaves as specified
+below; it will be called by operations that perform binary input.</p>
+<p>
+Each of the remaining arguments may be <code>#f</code>; if any of
+those arguments is not <code>#f</code>, it is a procedure
+that behaves as specified below.</p>
+<p>
+</p>
+<ul>
+<li><p><code>(<i>read!</i> <i>bytevector</i> <i>start</i> <i>count</i>)</code></p>
+<p>
+<i>Start</i> will be a non-negative exact integer,
+<i>count</i> will be a positive exact integer,
+and <i>bytevector</i> will be a bytevector whose length is at least
+<i>start</i>  +  <i>count</i>.
+The <i>read!</i> procedure obtains up to <i>count</i> bytes
+from the byte source, and writes those bytes
+into <i>bytevector</i> starting at index <i>start</i>.
+The <i>read!</i> procedure returns an exact integer.  This
+integer represents the number of bytes that it has read.
+To indicate an end of file, the <i>read!</i>
+procedure writes no bytes and returns 0.</p>
+<p>
+</p>
+<li><p><code>(<i>get-position</i>)</code></p>
+<p>
+The <i>get-position</i> procedure (if supplied) returns an exact
+integer representing the current position of
+the input port.  If not supplied, the custom port will not support
+the <code>port-position</code> operation.</p>
+<p>
+</p>
+<li><p><code>(<i>set-position!</i> <i>pos</i>)</code></p>
+<p>
+<i>Pos</i> will be a non-negative exact integer.
+The <i>set-position!</i> procedure (if supplied) sets the
+position of the input port to <i>pos</i>.  If not supplied, the custom
+port will not support the <code>set-port-position!</code> operation.</p>
+<p>
+</p>
+<li><p><code>(<i>close</i>)</code></p>
+<p>
+The <i>close</i> procedure (if supplied) performs any actions
+that are necessary when the input port is closed.
+</p>
+</ul><p></p>
+<p>
+The implementation must not check the return
+values of <i>read!</i> and <i>get-position</i> except when it actually calls
+them as part of an I/O operation requested by the program.  The
+implementation is not required to check that these procedures
+otherwise behave as described.  If they do not, however, the behavior
+of the resulting port is unspecified.
+</p>
+<p></p>
+<p>
+</p>
+<p></p>
+<div align=left><code>(make-custom-textual-input-port <i>id</i> <i>read!</i></code>
+<i>get-position</i>&nbsp;<i>set-position!</i>&nbsp;<i>close</i>)</code></div><p>
+Returns a newly created textual input port whose character source is
+an arbitrary algorithm represented by the <i>read!</i> procedure.
+<i>Id</i> is a string naming the new port,
+provided for informational purposes only.
+<i>Read!</i> is a procedure that behaves as specified
+below; it will be called by operations that perform textual input.</p>
+<p>
+Each of the remaining arguments may be <code>#f</code>; if any of
+those arguments is not <code>#f</code>, it is a procedure and
+that behaves as specified below.</p>
+<p>
+</p>
+<ul>
+<li><p><code>(<i>read!</i> <i>string</i> <i>start</i> <i>count</i>)</code></p>
+<p>
+<i>Start</i> will be a non-negative exact integer,
+<i>count</i> will be a positive exact integer,
+and <i>string</i> will be a string whose length is at least
+<i>start</i>  +  <i>count</i>.
+The <i>read!</i> procedure obtains up to <i>count</i> characters
+from the character source, and writes those characters
+into <i>string</i> starting at index <i>start</i>.
+The <i>read!</i> procedure returns an exact integer
+representing the number of characters that it has written.
+To indicate an end of file, the <i>read!</i>
+procedure writes no bytes and returns 0.</p>
+<p>
+</p>
+<li><p><code>(<i>get-position</i>)</code></p>
+<p>
+The <i>get-position</i> procedure (if supplied) returns a single
+value.  The return value represents the current position of
+the input port.  If not supplied, the custom port will not support
+the <code>port-position</code> operation.</p>
+<p>
+</p>
+<li><p><code>(<i>set-position!</i> <i>pos</i>)</code></p>
+<p>
+The <i>set-position!</i> procedure (if supplied) sets the
+position of the input port to <i>pos</i> if <i>pos</i> is the return
+value of a call to <i>get-position</i>.  If not supplied, the custom
+port will not support the <code>set-port-position!</code> operation.</p>
+<p>
+</p>
+<li><p><code>(<i>close</i>)</code></p>
+<p>
+The <i>close</i> procedure (if supplied) performs any actions
+that are necessary when the input port is closed.
+</p>
+</ul><p></p>
+<p>
+The implementation must not check the return
+values of <i>read!</i> and <i>get-position</i> except when it actually calls
+them as part of an I/O operation requested by the program.  The
+implementation is not required to check that these procedures
+otherwise behave as described.  If they do not, however, the behavior
+of the resulting port is unspecified.
+</p>
+<div align=left><code>(make-custom-binary-output-port <i>id</i></code>
+<i>write!</i>&nbsp;<i>get-position</i>&nbsp;<i>set-position!</i>&nbsp;<i>close</i>)</code></div><p>
+Returns a newly created binary output port whose byte sink is
+an arbitrary algorithm represented by the <i>write!</i> procedure.
+<i>Id</i> is a string naming the new port,
+provided for informational purposes only.
+<i>Write!</i> is a procedure that behaves as specified
+below; it will be called by operations that perform binary output.</p>
+<p>
+Each of the remaining arguments may be <code>#f</code>; if any of
+those arguments is not <code>#f</code>, it is a procedure and
+that behaves as specified in the description of
+<code>make-custom-binary-input-port</code>.</p>
+<p>
+</p>
+<ul>
+<li><p><code>(<i>write!</i> <i>bytevector</i> <i>start</i> <i>count</i>)</code></p>
+<p>
+<i>Start</i> and <i>count</i> will be non-negative exact
+integers,
+and <i>bytevector</i> will be a bytevector whose length is at least
+<i>start</i>  +  <i>count</i>.
+The <i>write!</i> procedure writes up to <i>count</i> bytes
+from <i>bytevector</i> starting at index <i>start</i> 
+to the byte sink.
+If <i>count</i> is 0, the <i>write!</i> procedure
+passes an end-of-file object (or equivalent) to the byte sink.
+In any case, the <i>write!</i> procedure returns the number of
+bytes that it wrote, as an exact integer.
+</p>
+</ul><p></p>
+<p>
+The implementation must not check the return
+values of <i>write!</i> except when it actually calls <i>write!</i> as part of
+an I/O operation requested by the program.  The implementation is not
+required to check that <i>write!</i> otherwise behaves as described.
+If it does not, however, the behavior of the resulting port is
+unspecified.
+</p>
+<p></p>
+<p>
+</p>
+<p></p>
+<div align=left><code>(make-custom-textual-output-port <i>id</i></code>
+<i>write!</i>&nbsp;<i>get-position</i>&nbsp;<i>set-position!</i>&nbsp;<i>close</i>)</code></div><p>
+Returns a newly created textual output port whose byte sink is
+an arbitrary algorithm represented by the <i>write!</i> procedure.
+<i>Id</i> is a string naming the new port,
+provided for informational purposes only.
+<i>Write!</i> is a procedure that behaves as specified
+below; it will be called by operations that perform textual output.</p>
+<p>
+Each of the remaining arguments may be <code>#f</code>; if any of
+those arguments is not <code>#f</code>, it is a procedure and
+that behaves as specified in the description of
+<code>make-custom-textual-input-port</code>.</p>
+<p>
+</p>
+<ul>
+<li><p><code>(<i>write!</i> <i>string</i> <i>start</i> <i>count</i>)</code></p>
+<p>
+<i>Start</i> and <i>count</i> will be non-negative exact
+integers,
+and <i>string</i> will be a string whose length is at least
+<i>start</i>  +  <i>count</i>.
+The <i>write!</i> procedure writes up to <i>count</i> characters
+from <i>string</i> starting at index <i>start</i> 
+to the character sink.
+If <i>count</i> is 0, the <i>write!</i> procedure
+passes an end-of-file object (or equivalent) to the character sink.
+In any case, the <i>write!</i> procedure returns the number of
+characters that it wrote, as an exact integer.
+</p>
+</ul><p></p>
+<p>
+The implementation must not check the return
+values of <i>write!</i> except when it actually calls <i>write!</i> as part of
+an I/O operation requested by the program.  The implementation is not
+required to check that <i>write!</i> otherwise behaves as described.
+If it does not, however, the behavior of the resulting port is
+unspecified.
+</p>
+
+<h1>Implementation</h1>
+
+<p>Every conforming R6RS implementation, including at least Chez, Guile, IronScheme,
+Larceny, Racket, and Vicare, already provides these procedures
+in the <code>(rnrs io ports)</code> library.
+Therefore, no implementation is provided here, especially since 
+a portable implementation is not possible.</p>
+
+<p>This SRFI can trivially be implemented on top of the Chicken
+procedures <code>make-input-port</code> and <code>make-output-port</code>
+in the <code>(chicken ports)</code> library.
+Chicken makes
+makes no provisions for getting and setting positions on either its
+built-in ports or custom ones.  It also does not
+distinguish between textual and binary ports (as permitted by R7RS), and its strings
+can store binary data; indeed, interpretation as characters
+is up to a higher-level library such as the <code>utf8</code> egg.
+
+<h1>Acknowledgements</h1>
+
+This would have been much more difficult without the R6RS team,
+who produced a good-enough (as opposed to perfect) design
+that John was happy to adopt.  Thanks also to Mikel More,
+who convinced him of the necessity of having a design.
+
+<h1>Copyright</h1>
+John Cowan does not claim copyright on his <i>de minimis</i> contributions
+to this SRFI.  Its content is drawn almost entirely from R6RS,
+which does not have a copyright notice.
+It does, however, contain the following copyright license:</p>
+
+<blockquote>
+We intend this report to belong to the entire Scheme community, and so we grant permission to copy it in whole or in
+part without fee.
+</blockquote>
+
+<p>Nevertheless, in order to keep the lawyers happy, the standard
+SRFI license is subjoined:</p>
+
+<blockquote>
+  Permission is hereby granted, free of charge, to any person
+  obtaining a copy of this software and associated documentation files
+  (the "Software"), to deal in the Software without restriction,
+  including without limitation the rights to use, copy, modify, merge,
+  publish, distribute, sublicense, and/or sell copies of the Software,
+  and to permit persons to whom the Software is furnished to do so,
+  subject to the following conditions:
+
+<p>
+  This permission notice (including the
+  next paragraph) shall be included in all copies or substantial
+  portions of the Software.
+<p>
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+  NONINFRINGEMENT.  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+  BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+  ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+</blockquote>
+
+  <hr>
+  <address>Editor: <a href="mailto:srfi-editors+at+srfi+dot+schemers+dot+org">Arthur A. Gleckler</a></address></body></html>

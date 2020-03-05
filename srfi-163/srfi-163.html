@@ -1,0 +1,321 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+  <head>
+    <title>SRFI 163: Enhanced array literals</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/srfi.css" type="text/css" />
+    <link href="/favicon.png" rel="icon" sizes="192x192" type="image/png" />
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<style type="text/css">
+  div.title h1, div.author h1 { font-size: small; color: blue }
+  div.title { font-size: xx-large; color: blue; font-weight: bold }
+  div.author { font-weight: bold; }
+  h1 { font-size: x-large; color: blue }
+  h2 { font-size: large; color: blue }
+  h3 { color: blue }
+  /* So var inside pre gets same font as var in paragraphs. */
+  var { font-family: monospace; }
+  var.non-terminal { }
+  var.non-terminal-def { }
+  code.literal { font-style: normal; }
+  code.literal:before { content: "“" }
+  code.literal:after { content: "”" }
+  span.proc-def { font-weight: bold }
+  code.function { font-weight: bold }
+  p.synopsis { background-color: #D8ffD8 }
+</style>
+  </head>
+
+<body>
+<div class="title">
+<h1>Title</h1>
+Enhanced Array Literals
+</div>
+
+<div class="author">
+<h1>Author</h1>
+Per Bothner
+</div>
+
+<h1>Status</h1>
+
+<p>This SRFI is currently in <em>final</em> status.  Here is <a href="https://srfi.schemers.org/srfi-process.html">an explanation</a> of each status that a SRFI can hold.  To provide input on this SRFI, please send email to <code><a href="mailto:srfi+minus+163+at+srfi+dotschemers+dot+org">srfi-163@<span class="antispam">nospam</span>srfi.schemers.org</a></code>.  To subscribe to the list, follow <a href="https://srfi.schemers.org/srfi-list-subscribe.html">these instructions</a>.  You can access previous messages via the mailing list <a href="https://srfi-email.schemers.org/srfi-163">archive</a>.</p>
+<ul>
+  <li>Received: 2018/10/30</li>
+  <li>Draft #1 published: 2018/11/1</li>
+  <li>Draft #2 published: 2018/11/4</li>
+  <li>Draft #3 published: 2018/11/17</li>
+  <li>Draft #4 published: 2018/12/8</li>
+  <li>Draft #5 published: 2019/1/3</li>
+  <li>Draft #6 published: 2019/1/11</li>
+  <li>Finalized: 2019/1/18</li>
+</ul>
+
+<h1>Abstract</h1>
+
+<p>This is a specification of a reader form (literals)
+for multi-dimensional arrays.
+It is an extension of the Common Lisp array reader syntax to handle
+non-zero lower bounds, optional explicit bounds,
+and optional uniform element types (compatible with <a href="https://srfi.schemers.org/srfi-4">SRFI 4</a>).
+It can be used in conjunction with <a href="https://srfi.schemers.org/srfi-25">SRFI 25</a>, <a href="https://srfi.schemers.org/srfi-122">SRFI 122</a>,
+or  <a href="https://srfi.schemers.org/srfi-164">SRFI 164</a>.
+These extensions were implemented in Guile (except the handling of rank-0 arrays),
+and later in Kawa.
+<p>There are recommendations for output formatting
+and a suggested <code>format-array</code> procedure.
+
+<h1>Rationale</h1>
+<p>
+It is desirable to have a read and write syntax for multi-dimensional arrays.
+Basing it on the Common Lisp syntax makes sense, and is what has been done
+by all known existing implementations.
+However, Common Lisp arrays do not support non-zero lower bounds,
+and Common Lisp's handling of specialized (uniform) arrays is very different from that of known
+Scheme implementations.
+Various Scheme extensions have been proposed.
+<a href="https://srfi.schemers.org/srfi-58">SRFI 58</a> is one proposal, but it does not handle non-zero lower bounds,
+and its type-specifier syntax is verbose and stylistically
+incompatible with the literals proposed for uniform vectors in SRFI 4.
+<p>
+This specification is basically that of Guile.
+However, Guile requires the single element of rank-0 arrays
+to be enclosed in parentheses. While this may slightly enhance readability,
+it is somewhat inconsistent in that otherwise the nesting of
+parentheses (of atom-valued arrays) is equal to the rank.
+It is also inconsistent with Common Lisp and SRFI 58.
+So this specification (and the Kawa implementation) diverge
+from Guile in this respect.
+
+<h1>Specification</h1>
+<h2>Reader syntax</h2>
+<p>An array literal starts with <code class="literal">#</code> followed by its rank,
+followed by a tag that describes the underlying vector (by default <code class="literal">a</code>),
+optionally followed by information about its shape,
+and finally followed by the cells, organized into dimensions using parentheses.
+</p>
+<p>For example, <code class="literal">#2a((11 12 13) (21 22 23))</code> is a rank-2 array (a matrix)
+whose upper index bounds (shape) is <code class="literal">#(2 3)</code>.
+It could be pretty-printed (using the non-normative <code>format-array</code>
+helper function below):
+</p>
+<pre class="screen">#2a:2:3══╗
+║11│12│13║
+╟──┼──┼──╢
+║21│22│23║
+╚══╧══╧══╝
+</pre>
+<div class="literallayout"><p id="meta-array-literal"><var class="non-terminal-def">array-literal</var> <code>::=</code> <var class="non-terminal">array-literal-header</var> <var class="non-terminal">datum</var><br>
+<var class="non-terminal-def">array-literal-header</var> <code>::=</code> <code class="literal"><span class="bold"><strong>#</strong></span></code> <var class="non-terminal">rank</var> <var class="non-terminal">vectag</var> <var class="non-terminal">array-bound</var><sup>*</sup> <br>
+<span id="meta-array-bound"><var class="non-terminal-def">array-bound</var> <code>::=</code> [<code class="literal"><span class="bold"><strong>@</strong></span></code><var class="non-terminal">lower</var>]<code class="literal"><span class="bold"><strong>:</strong></span></code><var class="non-terminal">length</var> | <code class="literal"><span class="bold"><strong>@</strong></span></code><var class="non-terminal">lower</var></span><br>
+<span id="meta-vectag"><var class="non-terminal-def">vectag</var> <code>::=</code> <code class="literal"><span class="bold"><strong>a</strong></span></code> | <var class="non-terminal">type-tag</var></span><br>
+</p></div>
+<p>The <var class="non-terminal">vectag</var> specifies the type of the elements of the array.
+The letter <code>a</code> means a general array where each element
+can be an arbitrary Scheme <var>datum</var>.
+Alternatively, a <var>type-tag</var> can be used for arrays
+whose elements are restricted to some specific type.
+An implementation that supports the literal syntax of
+<a href="https://srfi.schemers.org/srfi-4/srfi-4.html">SRFI 4</a>
+(or its proposed update <a href="https://srfi.schemers.org/srfi-160/srfi-160.html">SRFI 160</a>)
+should allow the <var>TAG</var> from that specification as a <var>type-tag</var>.
+For example <code>#2u32((10 11) (20 21))</code>
+is a 2x2 array of 32-bit unsigned integers.
+An implementation may support other values for <var>type-tag</var>
+as long as there is no ambiguity.
+</p>
+<p>Following the <var class="non-terminal">vectag</var> you can optionally include information
+about the shape: For each dimension you can optionally specify
+the lower bounds (after the character <code class="literal">@</code>),
+followed by the length of the dimension (after the character <code class="literal">":"</code>).
+The shape information is required if a lower bound is non-zero,
+or any length is zero.
+If any <var class="replaceable">array-bound</var> is specified,
+there must be exactly <var class="replaceable">rank</var> of them.
+</p>
+<p>The <var class="non-terminal">datum</var> contains the elements in a nested-list format:
+a rank-1 array uses a single list,
+a rank-2 array uses a list of lists, and so on.
+The elements are in lexicographic order.
+</p>
+<p>
+The <var class="non-terminal">array-literal-header</var> must be
+terminated by a <var class="non-terminal">delimiter</var>.
+This is trivially the case for rank-1 and above (since the left parenthesis
+of a <var class="non-terminal">list</var> is
+a <var class="non-terminal">delimiter</var>).
+For rank-0 arrays, a single space before <var class="replaceable">datum</var>
+is recommended style, even if the <var class="replaceable">datum</var> starts
+with a <var class="non-terminal">delimiter</var>.
+(<em>Compatibility note:</em> Common Lisp does not require a space after
+<code>#0a</code>.)
+<p>A uniform u32 array of rank 2 with index ranges 2..3 and 3..4:
+</p>
+<pre class="screen">#2u32@2@3((1 2) (2 3))
+</pre>
+<p>Rank 0 arrays:</p>
+<pre>
+#0a sym
+#0f32 237.0
+</pre>
+<p>Empty arrays:</p>
+<pre>
+#2a:0:2()
+#2a:2:0(() ())
+#3a:2:0:3(() ())
+#3a:2:3:0((() () ()) (() () ()))
+</pre>
+<p><em>Possible extension:</em>
+It might make source code more readable if it could contain
+array literals in the form produced by <code>format-array</code>.
+An implementation has not been attempted, but it seems doable:
+If the first non-whitespace character after the header is a
+box drawing character, then use those box-drawing characters to figure out
+each element <q>cell</q>. (Nested arrays make this a bit more complicated.)
+If a cell has multiple lines,
+convert it to a string, with a newline between each line.
+Then recursively <code>read</code> each element.
+</p>
+<h2>Output</h2>
+<p>When an array is printed with the <code>write</code> function,
+the result <em>should</em> be an <em class="replaceable">array-literal</em>.
+For rank-0 arrays (only), a single space <em>should</em> be printed
+before the <var class="replaceable">datum</var>.
+In an implementation where vector is a subtype of array, rank-1
+arrays with zero lower bound may be printed as vectors.
+<p>
+Printing with <code>display</code> <em>may</em> format the array in the same way as <code>write</code> (except using <code>display</code> for each element),
+<em>or</em> in some more readable way, perhaps by
+using the <code>format-array</code> procedure.
+</p>
+<h2>The format-array utility procedure (non-normative)</h2>
+<p class="synopsis"><code>(<span class="proc-def">format-array</span></code> <var>value</var> [<var>port</var>]<code>)</code></p>
+<div class="blockquote"><blockquote class="blockquote">
+<p>Produce a nice <q>pretty</q> display for <em class="replaceable"><code>value</code></em>, which is usually an array.
+Using <a href="https://unicode.org/charts/PDF/U2500.pdf">Unicode "box drawing" characters</a> is suggested but not required.
+<p>
+If <var>port</var> is an output port, the formatted output is written into
+that port.
+Otherwise, <var>port</var> must be a boolean
+(one of <code>#t</code> or <code>#f</code>).
+If the <var>port</var> is <code>#t</code>, output is to the
+<code>(current-output-port)</code>.
+If the <var>port</var> is <code>#f</code> or no <var>port</var> is specified,
+the output is returned as a string.
+If the port is specified and is <code>#t</code> or an output-port,
+the result of the <code>format-array</code> procedure is unspecified.
+(This convention matches that of <a href="https://srfi.schemers.org/srfi-48/srfi-48.html">SRFI 48</a> <code>format</code>.)
+</p>
+<p>The top line includes an <var>array-literal-header</var>.
+A lower bound is only printed if non-zero.
+The dimension lengths are printed if there is room, or if one of them is zero.
+</p>
+<pre class="screen"><strong class="userinput"><code>(define arr
+  #2a@1:2@1:3((#2a((1 2) (3 4)) 9 #2a((3 4) (5 6)))
+              (#(42 43) #2a((8 7 6)) #2a((90 91) (100 101)))))
+arr</code></strong> &#x21e8;
+#2a@1:2@1:3═════╤═════════╗
+║#2a═╗  │      9│#2a═╗    ║
+║║1│2║  │       │║3│4║    ║
+║╟─┼─╢  │       │╟─┼─╢    ║
+║║3│4║  │       │║5│6║    ║
+║╚═╧═╝  │       │╚═╧═╝    ║
+╟───────┼───────┼─────────╢
+║#1a:2═╗│#2a:1:3│#2a:2:2═╗║
+║║42│43║│║8│7│6║│║ 90│ 91║║
+║╚══╧══╝│╚═╧═╧═╝│╟───┼───╢║
+║       │       │║100│101║║
+║       │       │╚═══╧═══╝║
+╚═══════╧═══════╧═════════╝
+</pre>
+<p>If the rank is more than 2, then each “layer”
+is printed separated by double lines.
+</p>
+<pre class="screen"><strong class="userinput"><code>#3a(((1 2 3 4) (5 6 7 8))
+    ((9 10 11 12) (13 14 15 16))
+    ((17 18 19 20) (21 22 23 24)))</code></strong> &#x21e8;
+#3a:3:2:4═══╗
+║ 1│ 2│ 3│ 4║
+╟──┼──┼──┼──╢
+║ 5│ 6│ 7│ 8║
+╠══╪══╪══╪══╣
+║ 9│10│11│12║
+╟──┼──┼──┼──╢
+║13│14│15│16║
+╠══╪══╪══╪══╣
+║17│18│19│20║
+╟──┼──┼──┼──╢
+║21│22│23│24║
+╚══╧══╧══╧══╝
+</pre>
+<p>Implementations may extend <code>format-array</code> so it can be called
+with more than 2 arguments, but this is not specified here.
+For example, implementations could allow a formatting procedure or combinator.
+An implementation that supports <a href="https://srfi.schemers.org/srfi-48/srfi-48.html">SRFI 48 <code>format</code></a>
+<em>may</em> support an optional <var>element-format</var> parameter,
+which would be interpreted as a format string used for each array element.
+This is implemented in the Kawa reference implementation, as illustrated here:
+</p>
+<pre class="screen"><strong class="userinput"><code>(format-array arr "~4,2f")</code></strong> &#x21e8;
+#2a@1:2@1:3═══╤════════════════╤═══════════════╗
+║#2a:2:2═══╗  │            9.00│#2a:2:2═══╗    ║
+║║1.00│2.00║  │                │║3.00│4.00║    ║
+║╟────┼────╢  │                │╟────┼────╢    ║
+║║3.00│4.00║  │                │║5.00│6.00║    ║
+║╚════╧════╝  │                │╚════╧════╝    ║
+╟─────────────┼────────────────┼───────────────╢
+║#1a:2═╤═════╗│#2a:1:3════╤═══╗│#2a:2:2═══════╗║
+║║42.00│43.00║│║8.00│7.00│6.00║│║ 90.00│ 91.00║║
+║╚═════╧═════╝│╚════╧════╧════╝│╟──────┼──────╢║
+║             │                │║100.00│101.00║║
+║             │                │╚══════╧══════╝║
+╚═════════════╧════════════════╧═══════════════╝
+</pre>
+</blockquote></div>
+
+<h1>Implementation</h1>
+<p>This syntax is implemented in Guile (except for the handling of
+rank-0 arrays) and Kawa.</p>
+
+<p>The Kawa implementation for the reader syntax is in
+  <a href="https://gitlab.com/kashell/Kawa/blob/master/gnu/kawa/lispexpr/LispReader.java"><code>gnu.kawa.lispexpr.LispReader</code></a>.</p>
+
+<p>Kawa also provides <code>format-array</code>, implemented as a Scheme
+  wrapper around the <code>print</code> method of the
+  <a href="https://gitlab.com/kashell/Kawa/blob/master/gnu/kawa/functions/ArrayPrint.java"><code>gnu.kawa.functions.ArrayPrint</code></a>
+  class.</p>
+
+<p>The Kawa implementation includes tests in <a href="https://gitlab.com/kashell/Kawa/blob/master/testsuite/arr-test.scm">arr-test.scm</a>.
+  They are not standalone or portable, as they depend on Kawa
+  functionality, including SRFI-164-style arrays and SRFI 109 (to make
+  the result strings more readable).</p>
+
+<h1>Acknowledgements</h1>
+
+This specification is based on prior art, primarily
+Kawa, Guile, and Common Lisp.
+
+<h1>Copyright</h1>
+<p>
+Copyright (C) Per Bothner 2019</p>
+<p>
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:</p>
+<p>
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.</p>
+<p>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</p>
+<hr>
+<address>Editor: <a href="mailto:srfi-editors+at+srfi+dot+schemers+dot+org">Arthur A. Gleckler</a></address></body></html>
